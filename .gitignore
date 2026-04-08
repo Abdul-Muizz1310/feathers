@@ -38,6 +38,8 @@ coverage.xml
 .env
 .env.*
 !.env.example
+# Never ignore anything inside the templates tree — dotfile templates are real.
+!src/feathers/templates/**
 
 # IDE
 .idea/

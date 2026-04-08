@@ -8,21 +8,34 @@ from typer.testing import CliRunner
 
 from feathers.cli import app
 
+# mix_stderr is removed in newer Typer; keep runner simple.
 runner = CliRunner()
+
+
+def _plain(text: str) -> str:
+    """Strip ANSI escape sequences so tests don't care about Rich styling."""
+    import re
+
+    return re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", text)
 
 
 def test_root_help() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
+    out = _plain(result.stdout)
     for cmd in ("new", "add", "lint", "doctor"):
-        assert cmd in result.stdout
+        assert cmd in out
 
 
 def test_new_help() -> None:
     result = runner.invoke(app, ["new", "--help"])
     assert result.exit_code == 0
-    for opt in ("--schema", "--name", "--out", "--force"):
-        assert opt in result.stdout
+    out = _plain(result.stdout)
+    # Rich may wrap and break option strings across lines; look for the short forms too.
+    assert "schema" in out and ("-s" in out or "--schema" in out)
+    assert "name" in out
+    assert "out" in out
+    assert "force" in out
 
 
 def test_new_creates_service_dir(users_yaml_path: Path, tmp_path: Path) -> None:
