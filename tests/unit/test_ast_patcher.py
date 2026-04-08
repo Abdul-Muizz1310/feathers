@@ -30,9 +30,9 @@ models:
       - { name: id, type: uuid, primary: true }
       - { name: email, type: str }
 endpoints:
-  - { method: POST, path: /users, handler: users.create, auth: admin }
-  - { method: GET,  path: /users/{id}, handler: users.get, auth: any }
-  - { method: GET,  path: /users/{id}/audit, handler: users.audit, auth: admin }
+  - { method: POST, path: "/users", handler: users.create, auth: admin }
+  - { method: GET,  path: "/users/{id}", handler: users.get, auth: any }
+  - { method: GET,  path: "/users/{id}/audit", handler: users.audit, auth: admin }
 """
 
 
@@ -60,16 +60,12 @@ def test_idempotent_add_endpoint(users_yaml_path: Path, tmp_path: Path) -> None:
     assert all(a == "unchanged" for _, a in actions)
 
 
-def test_preserves_hand_written_fence(
-    users_yaml_path: Path, tmp_path: Path
-) -> None:
+def test_preserves_hand_written_fence(users_yaml_path: Path, tmp_path: Path) -> None:
     service = _bootstrap_service(users_yaml_path, tmp_path)
     router = service / "src" / "hello_users" / "api" / "routers" / "users.py"
     original = router.read_text()
     fence = (
-        "\n# feathers: begin hand-written\n"
-        "HAND_WRITTEN_CONST = 42\n"
-        "# feathers: end hand-written\n"
+        "\n# feathers: begin hand-written\nHAND_WRITTEN_CONST = 42\n# feathers: end hand-written\n"
     )
     router.write_text(original + fence)
     new_schema = load_schema(EXTRA_ENDPOINT_YAML)

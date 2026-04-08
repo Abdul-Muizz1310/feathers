@@ -60,6 +60,10 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "N", "SIM", "RUF"]
 
+[tool.ruff.lint.per-file-ignores]
+"src/feathers/cli.py" = ["B008"]  # Typer API requires function calls as defaults
+"tests/**/*.py" = ["RUF043"]      # match= regex metacharacters are fine in tests
+
 [tool.ruff.format]
 quote-style = "double"
 
@@ -73,4 +77,9 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "slow: end-to-end tests that generate a service, sync deps, and boot it",
+]
+
+[dependency-groups]
+dev = [
+    "types-pyyaml>=6.0.12.20260408",
 ]

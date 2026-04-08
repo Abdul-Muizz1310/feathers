@@ -1,0 +1,26 @@
+[project]
+name = "{{ service.snake }}"
+version = "0.1.0"
+description = "{{ service.description }}"
+readme = "README.md"
+requires-python = ">={{ service.python }}"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "structlog>=24.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "httpx>=0.27",
+]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/{{ service.snake }}"]

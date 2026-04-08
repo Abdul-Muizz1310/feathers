@@ -27,5 +27,5 @@ models:
       - { name: id, type: uuid, primary: true }
       - { name: label, type: str, max_length: 50 }
 endpoints:
-  - { method: GET, path: /things/{id}, handler: things.get, auth: none }
+  - { method: GET, path: "/things/{id}", handler: things.get, auth: none }
 """

@@ -44,9 +44,7 @@ def test_new_creates_service_dir(users_yaml_path: Path, tmp_path: Path) -> None:
     assert (service / "src" / "hello_users" / "main.py").is_file()
 
 
-def test_new_refuses_overwrite_without_force(
-    users_yaml_path: Path, tmp_path: Path
-) -> None:
+def test_new_refuses_overwrite_without_force(users_yaml_path: Path, tmp_path: Path) -> None:
     (tmp_path / "hello_users").mkdir()
     result = runner.invoke(
         app,

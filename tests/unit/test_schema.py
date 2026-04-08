@@ -8,7 +8,6 @@ import pytest
 
 from feathers.schema import SchemaError, ServiceSchema, load_schema
 
-
 # ── Success ─────────────────────────────────────────────────────────────────
 
 

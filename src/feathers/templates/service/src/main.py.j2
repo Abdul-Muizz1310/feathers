@@ -1,0 +1,17 @@
+"""FastAPI entry point for {{ service.snake }}."""
+
+from __future__ import annotations
+
+from fastapi import FastAPI
+
+from {{ service.snake }}.core.platform import install_platform_middleware
+{% for model in models %}
+from {{ service.snake }}.api.routers.{{ model.plural_snake }} import router as {{ model.plural_snake }}_router
+{%- endfor %}
+
+app = FastAPI(title="{{ service.name }}", version="0.1.0")
+install_platform_middleware(app, service_name="{{ service.snake }}")
+
+{% for model in models %}
+app.include_router({{ model.plural_snake }}_router)
+{%- endfor %}

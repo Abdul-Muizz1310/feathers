@@ -1,0 +1,15 @@
+"""Routes for {{ model.name }}."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter
+
+router = APIRouter(prefix="/{{ model.plural_snake }}", tags=["{{ model.plural_snake }}"])
+
+{% for ep in endpoints if ep.handler.startswith(model.plural_snake + ".") %}
+
+@router.{{ ep.method.lower() }}("{{ ep.path.replace('/' + model.plural_snake, '') or '/' }}")
+async def {{ ep.func_name }}() -> dict[str, str]:
+    """{{ ep.method }} {{ ep.path }}"""
+    return {"handler": "{{ ep.handler }}"}
+{% endfor %}

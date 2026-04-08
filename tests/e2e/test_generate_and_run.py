@@ -30,9 +30,7 @@ def test_generate_users_service_boots_and_healthchecks(
     render_service(schema, out_dir=tmp_path)
     service = tmp_path / "hello_users"
 
-    sync = subprocess.run(
-        ["uv", "sync"], cwd=service, capture_output=True, text=True, timeout=300
-    )
+    sync = subprocess.run(["uv", "sync"], cwd=service, capture_output=True, text=True, timeout=300)
     assert sync.returncode == 0, sync.stderr
 
     port = _free_port()
@@ -62,7 +60,7 @@ def test_generate_users_service_boots_and_healthchecks(
                     assert body["status"] == "ok"
                     assert body["service"] == "hello_users"
                     return
-            except Exception as exc:  # noqa: BLE001 — retry loop
+            except Exception as exc:
                 last_exc = exc
             time.sleep(0.5)
         pytest.fail(f"service did not become healthy: {last_exc}")
@@ -74,9 +72,7 @@ def test_generate_users_service_boots_and_healthchecks(
             proc.kill()
 
 
-def test_generated_service_has_platform_middleware(
-    users_yaml_path: Path, tmp_path: Path
-) -> None:
+def test_generated_service_has_platform_middleware(users_yaml_path: Path, tmp_path: Path) -> None:
     schema = load_schema(users_yaml_path)
     render_service(schema, out_dir=tmp_path)
     platform = tmp_path / "hello_users" / "src" / "hello_users" / "core" / "platform.py"
@@ -85,9 +81,7 @@ def test_generated_service_has_platform_middleware(
     assert "install_platform_middleware" in text
 
 
-def test_generated_ci_workflow_valid_yaml(
-    users_yaml_path: Path, tmp_path: Path
-) -> None:
+def test_generated_ci_workflow_valid_yaml(users_yaml_path: Path, tmp_path: Path) -> None:
     schema = load_schema(users_yaml_path)
     render_service(schema, out_dir=tmp_path)
     ci = tmp_path / "hello_users" / ".github" / "workflows" / "ci.yml"
