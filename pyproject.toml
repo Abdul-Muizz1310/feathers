@@ -71,3 +71,6 @@ files = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "slow: end-to-end tests that generate a service, sync deps, and boot it",
+]
