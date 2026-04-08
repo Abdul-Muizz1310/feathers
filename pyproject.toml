@@ -48,9 +48,16 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/feathers"]
+# Force-include is not needed — `packages` already ships every file under
+# src/feathers/, including the Jinja .j2 templates and the demo .yaml files.
 
-[tool.hatch.build.targets.wheel.force-include]
-"src/feathers/templates" = "feathers/templates"
+[tool.hatch.build]
+include = [
+    "src/feathers/**/*.py",
+    "src/feathers/**/*.j2",
+    "src/feathers/**/*.yaml",
+    "src/feathers/**/*.yml",
+]
 
 [tool.ruff]
 line-length = 100
