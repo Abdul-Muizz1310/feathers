@@ -142,3 +142,96 @@ def test_bench_deferred() -> None:
     result = runner.invoke(app, ["bench"])
     assert result.exit_code != 0
     assert "v0.2" in result.stdout or "v0.2" in (result.stderr or "")
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests
+# ---------------------------------------------------------------------------
+
+
+def test_new_name_mismatch_warning(users_yaml_path: Path, tmp_path: Path) -> None:
+    """Cover cli.py:39 — --name differs from schema service.name."""
+    result = runner.invoke(
+        app,
+        [
+            "new",
+            "--schema",
+            str(users_yaml_path),
+            "--name",
+            "wrong_name",  # schema says "hello_users"
+            "--out",
+            str(tmp_path),
+        ],
+    )
+    assert result.exit_code == 0
+    assert "warning" in _plain(result.stdout).lower() or "warning" in _plain(result.stderr or "").lower()
+
+
+def test_add_endpoint_schema_error_exits_1(tmp_path: Path) -> None:
+    """Cover cli.py:60-67 — add endpoint with bad schema → exit 1."""
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("not valid schema")
+    result = runner.invoke(
+        app,
+        ["add", "endpoint", "--schema", str(bad), "--service", str(tmp_path)],
+    )
+    assert result.exit_code == 1
+
+
+def test_add_model_schema_error_exits_1(tmp_path: Path) -> None:
+    """Cover cli.py:76-83 — add model with bad schema → exit 1."""
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("not valid schema")
+    result = runner.invoke(
+        app,
+        ["add", "model", "--schema", str(bad), "--service", str(tmp_path)],
+    )
+    assert result.exit_code == 1
+
+
+def test_add_endpoint_happy(users_yaml_path: Path, tmp_path: Path) -> None:
+    """Cover cli.py:65-67 — add endpoint on generated service."""
+    # First generate a service
+    runner.invoke(
+        app,
+        [
+            "new",
+            "--schema", str(users_yaml_path),
+            "--name", "hello_users",
+            "--out", str(tmp_path),
+        ],
+    )
+    # Then add endpoints (should be idempotent)
+    result = runner.invoke(
+        app,
+        [
+            "add", "endpoint",
+            "--schema", str(users_yaml_path),
+            "--service", str(tmp_path / "hello_users"),
+        ],
+    )
+    assert result.exit_code == 0, _plain(result.stdout)
+    assert "ok" in _plain(result.stdout).lower()
+
+
+def test_add_model_happy(users_yaml_path: Path, tmp_path: Path) -> None:
+    """Cover cli.py:81-83 — add model on generated service."""
+    runner.invoke(
+        app,
+        [
+            "new",
+            "--schema", str(users_yaml_path),
+            "--name", "hello_users",
+            "--out", str(tmp_path),
+        ],
+    )
+    result = runner.invoke(
+        app,
+        [
+            "add", "model",
+            "--schema", str(users_yaml_path),
+            "--service", str(tmp_path / "hello_users"),
+        ],
+    )
+    assert result.exit_code == 0, _plain(result.stdout)
+    assert "ok" in _plain(result.stdout).lower()

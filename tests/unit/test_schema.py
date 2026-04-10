@@ -155,3 +155,27 @@ def test_empty_yaml_file(tmp_path: Path) -> None:
 def test_malformed_yaml() -> None:
     with pytest.raises(SchemaError):
         load_schema("service: [unclosed")
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — loader.py
+# ---------------------------------------------------------------------------
+
+
+def test_yaml_root_not_dict_raises(tmp_path: Path) -> None:
+    """Cover loader.py:51 — YAML doc parses as list, not dict."""
+    p = tmp_path / "list.yaml"
+    p.write_text("- one\n- two\n- three\n")
+    with pytest.raises(SchemaError, match="mapping"):
+        load_schema(p)
+
+
+def test_file_read_os_error_raises(tmp_path: Path) -> None:
+    """Cover loader.py:37-38 — OSError when reading file."""
+    p = tmp_path / "unreadable.yaml"
+    p.write_text("service:")
+    # Make the path point to a directory instead to trigger OSError
+    p.unlink()
+    p.mkdir()
+    with pytest.raises(SchemaError):
+        load_schema(p)

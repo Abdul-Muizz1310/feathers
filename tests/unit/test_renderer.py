@@ -91,3 +91,28 @@ def test_renderer_error_on_missing_template_dir(
     schema = load_schema(users_yaml_path)
     with pytest.raises(RendererError):
         render_service(schema, out_dir=tmp_path)
+
+
+def test_renderer_error_on_bad_template_syntax(
+    monkeypatch: pytest.MonkeyPatch,
+    users_yaml_path: Path,
+    tmp_path: Path,
+) -> None:
+    """Cover renderer.py:134-135,139-140 — bad template load/render."""
+    import shutil
+
+    from feathers.generator import renderer
+
+    # Copy the real template tree
+    custom_root = tmp_path / "templates"
+    shutil.copytree(renderer.TEMPLATE_ROOT, custom_root)
+
+    # Sabotage a template with broken Jinja
+    broken = custom_root / "pyproject.toml.j2"
+    broken.write_text("{% invalid block %}", encoding="utf-8")
+
+    monkeypatch.setattr(renderer, "TEMPLATE_ROOT", custom_root)
+    schema = load_schema(users_yaml_path)
+    out = tmp_path / "out"
+    with pytest.raises(RendererError):
+        render_service(schema, out_dir=out)

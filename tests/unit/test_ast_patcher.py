@@ -114,3 +114,35 @@ def test_add_to_nonexistent_service_raises(tmp_path: Path) -> None:
     schema = load_schema(EXTRA_ENDPOINT_YAML)
     with pytest.raises(PatcherError):
         add_endpoint(service_dir=tmp_path / "nope", schema=schema)
+
+
+def test_add_endpoint_missing_routers_dir_raises(tmp_path: Path) -> None:
+    """Cover ast_patcher.py:50 — routers dir not found."""
+    # Create a valid-looking service dir without a routers subdir
+    schema = load_schema(EXTRA_ENDPOINT_YAML)
+    service = tmp_path / "fake_svc"
+    (service / "src" / "hello_users" / "api").mkdir(parents=True)
+    # No "routers" directory inside api/
+    with pytest.raises(PatcherError, match="routers dir not found"):
+        add_endpoint(service_dir=service, schema=schema)
+
+
+def test_add_endpoint_skips_model_without_router_file(
+    users_yaml_path: Path, tmp_path: Path
+) -> None:
+    """Cover ast_patcher.py:56 — router file doesn't exist → skip."""
+    service = _bootstrap_service(users_yaml_path, tmp_path)
+    # Remove the generated router file
+    router = service / "src" / "hello_users" / "api" / "routers" / "users.py"
+    router.unlink()
+    # add_endpoint should not crash — just return no actions for this model
+    schema = load_schema(EXTRA_ENDPOINT_YAML)
+    actions = add_endpoint(service_dir=service, schema=schema)
+    assert all(a == "unchanged" or a == "added" for _, a in actions) or len(actions) == 0
+
+
+def test_add_model_to_nonexistent_service_raises(tmp_path: Path) -> None:
+    """Cover ast_patcher.py:71 — service dir not found for add_model."""
+    schema = load_schema(EXTRA_MODEL_YAML)
+    with pytest.raises(PatcherError, match="not found"):
+        add_model(service_dir=tmp_path / "nope", schema=schema)
