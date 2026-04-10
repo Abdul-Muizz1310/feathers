@@ -197,18 +197,24 @@ def test_add_endpoint_happy(users_yaml_path: Path, tmp_path: Path) -> None:
         app,
         [
             "new",
-            "--schema", str(users_yaml_path),
-            "--name", "hello_users",
-            "--out", str(tmp_path),
+            "--schema",
+            str(users_yaml_path),
+            "--name",
+            "hello_users",
+            "--out",
+            str(tmp_path),
         ],
     )
     # Then add endpoints (should be idempotent)
     result = runner.invoke(
         app,
         [
-            "add", "endpoint",
-            "--schema", str(users_yaml_path),
-            "--service", str(tmp_path / "hello_users"),
+            "add",
+            "endpoint",
+            "--schema",
+            str(users_yaml_path),
+            "--service",
+            str(tmp_path / "hello_users"),
         ],
     )
     assert result.exit_code == 0, _plain(result.stdout)
@@ -221,17 +227,23 @@ def test_add_model_happy(users_yaml_path: Path, tmp_path: Path) -> None:
         app,
         [
             "new",
-            "--schema", str(users_yaml_path),
-            "--name", "hello_users",
-            "--out", str(tmp_path),
+            "--schema",
+            str(users_yaml_path),
+            "--name",
+            "hello_users",
+            "--out",
+            str(tmp_path),
         ],
     )
     result = runner.invoke(
         app,
         [
-            "add", "model",
-            "--schema", str(users_yaml_path),
-            "--service", str(tmp_path / "hello_users"),
+            "add",
+            "model",
+            "--schema",
+            str(users_yaml_path),
+            "--service",
+            str(tmp_path / "hello_users"),
         ],
     )
     assert result.exit_code == 0, _plain(result.stdout)
