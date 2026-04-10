@@ -164,7 +164,8 @@ def test_new_name_mismatch_warning(users_yaml_path: Path, tmp_path: Path) -> Non
         ],
     )
     assert result.exit_code == 0
-    assert "warning" in _plain(result.stdout).lower() or "warning" in _plain(result.stderr or "").lower()
+    combined = _plain(result.stdout).lower() + _plain(result.stderr or "").lower()
+    assert "warning" in combined
 
 
 def test_add_endpoint_schema_error_exits_1(tmp_path: Path) -> None:

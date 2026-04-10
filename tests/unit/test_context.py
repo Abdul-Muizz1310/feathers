@@ -5,7 +5,6 @@ from __future__ import annotations
 from feathers.generator.context import ModelView, build_context, plural, snake
 from feathers.schema import load_schema
 
-
 # ---------------------------------------------------------------------------
 # plural() — coverage for lines 43 + 45
 # ---------------------------------------------------------------------------
