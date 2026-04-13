@@ -126,8 +126,6 @@ def test_renderer_error_on_render_failure(
     """Cover renderer.py:139-140 — template loads but fails during render."""
     import shutil
 
-    from jinja2 import TemplateError
-
     from feathers.generator import renderer
 
     custom_root = tmp_path / "templates"
