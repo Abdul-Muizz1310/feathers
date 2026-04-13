@@ -8,7 +8,7 @@
 ![pypi](https://img.shields.io/pypi/v/feathers-cli?style=flat-square)
 ![python](https://img.shields.io/badge/python-3.12+-3776ab?style=flat-square&logo=python&logoColor=white)
 ![ci](https://img.shields.io/github/actions/workflow/status/Abdul-Muizz1310/feathers/ci.yml?style=flat-square)
-![coverage](https://img.shields.io/badge/coverage-86%25-yellow?style=flat-square)
+![coverage](https://img.shields.io/badge/coverage-100%25-brightgreen?style=flat-square)
 ![mypy](https://img.shields.io/badge/mypy-strict-blue?style=flat-square)
 ![license](https://img.shields.io/github/license/Abdul-Muizz1310/feathers?style=flat-square)
 
@@ -289,20 +289,10 @@ uv run pytest -m "not slow"                # skip e2e generation + boot
 
 | Metric | Value |
 |---|---|
-| **Test count** | 45 tests |
-| **Coverage** | **86%** (target: 100%) |
+| **Test count** | 63 tests |
+| **Line coverage** | **100%** |
 | **E2E** | `@pytest.mark.slow` — generates the users service, `uv sync`, boots uvicorn, hits `/health` |
 | **CI** | GitHub Actions: ruff → mypy → pytest → `uv build` |
-
-### Coverage roadmap
-
-| Module | Current | Gap |
-|---|---|---|
-| `cli.py` | 73% | `add_endpoint` / `add_model` error paths, name-mismatch warning |
-| `generator/context.py` | 88% | `plural()` edge cases (`"entry" → "entries"`, `"status" → "status"`) |
-| `generator/renderer.py` | 92% | Template load / render error paths |
-| `schema/loader.py` | 94% | `OSError` on file read, YAML non-dict root |
-| `generator/ast_patcher.py` | 96% | Missing `routers_dir` / `models_dir` error branches |
 
 ---
 
@@ -310,7 +300,7 @@ uv run pytest -m "not slow"                # skip e2e generation + boot
 
 | Principle | How it shows up |
 |---|---|
-| 🔴 **Spec-TDD** | 45 tests across loader, schema, renderer, AST patcher, CLI. Red-first. |
+| 🔴 **Spec-TDD** | 63 tests across loader, schema, renderer, AST patcher, CLI. Red-first. |
 | 🚫 **Negative-space programming** | `Literal` types for field types, HTTP methods, auth roles. Frozen Pydantic models. Schema validation rejects invalid input before any file is written. |
 | 🏗️ **MVC-style layering** | `cli → generator → schema`. Each layer has one responsibility and never reaches across. |
 | 🔒 **Typed everything** | `mypy --strict` passes. No `any` in source. Public APIs fully type-hinted. |
