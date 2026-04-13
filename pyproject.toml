@@ -79,6 +79,9 @@ python_version = "3.12"
 strict = true
 files = ["src"]
 
+[tool.coverage.run]
+omit = ["src/feathers/templates/**/*.j2"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

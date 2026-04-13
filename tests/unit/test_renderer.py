@@ -98,7 +98,7 @@ def test_renderer_error_on_bad_template_syntax(
     users_yaml_path: Path,
     tmp_path: Path,
 ) -> None:
-    """Cover renderer.py:134-135,139-140 — bad template load/render."""
+    """Cover renderer.py:134-135 — bad template load."""
     import shutil
 
     from feathers.generator import renderer
@@ -115,4 +115,31 @@ def test_renderer_error_on_bad_template_syntax(
     schema = load_schema(users_yaml_path)
     out = tmp_path / "out"
     with pytest.raises(RendererError):
+        render_service(schema, out_dir=out)
+
+
+def test_renderer_error_on_render_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    users_yaml_path: Path,
+    tmp_path: Path,
+) -> None:
+    """Cover renderer.py:139-140 — template loads but fails during render."""
+    import shutil
+
+    from jinja2 import TemplateError
+
+    from feathers.generator import renderer
+
+    custom_root = tmp_path / "templates"
+    shutil.copytree(renderer.TEMPLATE_ROOT, custom_root)
+
+    # Template that references a context variable not provided by feathers.
+    # StrictUndefined raises at render time, not load time.
+    broken = custom_root / "pyproject.toml.j2"
+    broken.write_text("{{ totally_undefined_var }}", encoding="utf-8")
+
+    monkeypatch.setattr(renderer, "TEMPLATE_ROOT", custom_root)
+    schema = load_schema(users_yaml_path)
+    out = tmp_path / "out"
+    with pytest.raises(RendererError, match="template render failed"):
         render_service(schema, out_dir=out)
