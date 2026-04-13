@@ -21,13 +21,15 @@ def test_plural_word_ending_in_y() -> None:
 
 
 def test_plural_word_ending_in_s() -> None:
-    """Cover context.py:45 — already ends in 's' → unchanged."""
-    assert plural("status") == "status"
-    assert plural("address") == "address"
+    """Words ending in s/sh/ch/x/z get 'es' suffix."""
+    assert plural("status") == "statuses"
+    assert plural("address") == "addresses"
+    assert plural("crash") == "crashes"
+    assert plural("match") == "matches"
 
 
 def test_plural_single_char() -> None:
-    assert plural("x") == "xs"
+    assert plural("x") == "xes"
 
 
 # ---------------------------------------------------------------------------

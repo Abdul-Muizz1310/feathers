@@ -39,10 +39,10 @@ def snake(name: str) -> str:
 
 
 def plural(name: str) -> str:
-    if name.endswith("y"):
+    if name.endswith("y") and not name.endswith("ey"):
         return name[:-1] + "ies"
-    if name.endswith("s"):
-        return name
+    if name.endswith(("s", "sh", "ch", "x", "z")):
+        return name + "es"
     return name + "s"
 
 
