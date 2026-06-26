@@ -82,6 +82,9 @@ files = ["src"]
 [tool.coverage.run]
 omit = ["src/feathers/templates/**/*.j2"]
 
+[tool.coverage.report]
+fail_under = 80
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
