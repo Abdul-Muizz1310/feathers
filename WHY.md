@@ -7,17 +7,20 @@ once, for the first ten minutes of a project's life.
 
 ## Why I built it differently
 
-Templates rot the moment you edit the generated code — you can never re-run the
-generator without losing your changes. `feathers` uses `libcst` to rewrite the AST of
-existing files, so `feathers add endpoint` slots new routes into your router without
-touching a line you wrote. Hand-written fence markers make that contract explicit.
-I weighed a simpler marker-comment approach, but it fails on anything non-trivial
-(imports, decorator ordering, argument lists). Paying the libcst complexity tax buys
-genuine incremental codegen, which is the difference between a toy and a tool I'd use
-at work.
+Templates rot the moment you edit the generated code, and most scaffolders trust their
+input. `feathers` does the opposite on both counts. The schema is a frozen Pydantic v2
+model tree, so a malformed YAML is rejected with a precise, located error before a single
+file is written — illegal states never reach the renderer. The codegen is then idempotent
+and fence-protected: `feathers add endpoint` splices new handler functions in by locating
+deterministic `# feathers:` marker comments and inserting above the hand-written fence,
+guarded by a function-existence check. Running it twice is a byte-identical no-op, and code
+between the fences is never touched. This is deterministic marker splicing, not AST
+rewriting. I weighed parsing each file into a concrete syntax tree, but for v0.1 the
+additions are append-only, so a syntax tree buys correctness I do not yet need at a cost in
+speed and dependencies.
 
 ## What I'd change if I did it again
 
-libcst is slow on files over a few hundred lines and its API is verbose. For a v2 I'd
-split codegen into two tiers: marker-based line splicing for simple additions, AST
-rewriting only when the change crosses structural boundaries.
+Marker splicing cannot merge imports — once a handler needs a new import, I hand-edit it.
+For v0.2 I would add a CST-based patcher (libcst) scoped only to import merging, where a
+real parse genuinely earns its keep.

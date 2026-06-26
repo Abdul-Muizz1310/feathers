@@ -36,7 +36,7 @@ $ feathers add endpoint --schema demos/users.yaml --service ./hello-users
 
 Most scaffolders give you a **dead tree the moment you touch it** — one regeneration and your edits are gone. `feathers` is different:
 
-- **Incremental AST codegen** via `libcst` — `feathers add` slots new code into existing services without clobbering a single line you wrote.
+- **Incremental marker-based codegen** — `feathers add` splices new code into existing services without clobbering a single line you wrote.
 - **Fence markers** (`# feathers: begin hand-written`) protect your code forever.
 - **Pydantic v2 frozen models** validate every schema before a single file is written — if the schema is wrong, nothing gets generated.
 - **One YAML file** produces a fully wired FastAPI service: tests, migrations, observability, CI, Docker, and platform middleware — all production-ready.
@@ -46,7 +46,7 @@ Most scaffolders give you a **dead tree the moment you touch it** — one regene
 ## ✨ Features
 
 - 🏗️ **Full service generation** — 21 Jinja2 templates produce a complete FastAPI project
-- 🔄 **Incremental codegen** — `feathers add endpoint` uses libcst AST rewriting, not string replacement
+- 🔄 **Incremental codegen** — `feathers add endpoint` splices new handlers in via deterministic `# feathers:` markers, with a function-existence check for idempotency
 - 🛡️ **Fence markers** — hand-written code between `# feathers: begin hand-written` fences is never touched
 - ✅ **Schema-first** — Pydantic v2 frozen models validate YAML before any file is written
 - 📊 **Observability built-in** — Prometheus metrics, OpenTelemetry tracing, structlog logging
@@ -65,7 +65,7 @@ flowchart TD
     Loader --> Schema[schema<br/>Pydantic v2 frozen validation]
     Schema --> Context[context<br/>type mapping · snake/pascal · plural]
     Context --> Renderer[renderer<br/>Jinja2 · 21 templates]
-    Context --> Patcher[ast_patcher<br/>libcst · for feathers add]
+    Context --> Patcher[ast_patcher<br/>marker splicing · for feathers add]
     Renderer --> Service[Generated FastAPI service]
     Patcher --> Service
 ```
@@ -78,7 +78,7 @@ sequenceDiagram
     participant CLI as feathers CLI
     participant Val as Pydantic validator
     participant Gen as Jinja renderer
-    participant AST as libcst patcher
+    participant AST as marker patcher
     participant FS as File system
 
     User->>CLI: feathers new
@@ -187,7 +187,7 @@ feathers/
 ├── src/feathers/
 │   ├── cli.py                       # Typer CLI entry point
 │   ├── generator/
-│   │   ├── ast_patcher.py           # libcst AST rewriting for feathers add
+│   │   ├── ast_patcher.py           # marker-based splicing for feathers add
 │   │   ├── context.py               # Type mapping, naming transforms
 │   │   └── renderer.py              # Jinja2 template rendering
 │   ├── schema/
@@ -257,7 +257,7 @@ hello-users/
 
 | Most scaffolders | `feathers` |
 |---|---|
-| Cookiecutter templates — stale after first edit | **Incremental AST codegen** — regeneration stays safe forever |
+| Cookiecutter templates — stale after first edit | **Incremental marker-based codegen** — regeneration stays safe forever |
 | String templating | **Pydantic v2 schema** validated before any file is written |
 | Hand-wired middleware per service | **Platform middleware** shipped with every generated service |
 | You protect your edits with prayer | **Fence markers** — regen never touches protected regions |
@@ -272,7 +272,7 @@ hello-users/
 | CLI framework | **Typer** |
 | YAML validation | **Pydantic v2** (frozen models) |
 | Template engine | **Jinja2** (21 templates per service) |
-| AST rewriting | **libcst** |
+| Incremental codegen | **marker-based splicing** (`# feathers:` fences) |
 | Package manager | **uv** |
 | Lint / Types | **ruff** + **mypy strict** |
 | Tests | **pytest** + coverage |
@@ -305,7 +305,7 @@ uv run pytest -m "not slow"                # skip e2e generation + boot
 | 🏗️ **MVC-style layering** | `cli → generator → schema`. Each layer has one responsibility and never reaches across. |
 | 🔒 **Typed everything** | `mypy --strict` passes. No `any` in source. Public APIs fully type-hinted. |
 | 🧊 **Pure core, imperative shell** | Schema validation, context building, and rendering are pure. File I/O lives only in the CLI entry points. |
-| 📦 **One responsibility per module** | `loader` (I/O), `service` (schema defs), `context` (view transforms), `renderer` (Jinja), `ast_patcher` (AST). |
+| 📦 **One responsibility per module** | `loader` (I/O), `service` (schema defs), `context` (view transforms), `renderer` (Jinja), `ast_patcher` (marker splicing). |
 
 ---
 

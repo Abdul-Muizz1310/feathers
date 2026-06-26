@@ -53,7 +53,7 @@ feathers/
 ├── src/feathers/
 │   ├── cli.py                       # Typer CLI — entry point for all commands
 │   ├── generator/
-│   │   ├── ast_patcher.py           # libcst AST rewriting (feathers add)
+│   │   ├── ast_patcher.py           # marker-based splicing (feathers add)
 │   │   ├── context.py               # Schema → template context transforms
 │   │   └── renderer.py              # Jinja2 template rendering engine
 │   ├── schema/

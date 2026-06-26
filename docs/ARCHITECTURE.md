@@ -8,7 +8,7 @@ flowchart LR
     Loader --> Schema[ServiceSchema<br/>Pydantic v2 model]
     Schema --> Context[generator.context<br/>build render context]
     Context --> Renderer[generator.renderer<br/>Jinja2 templates]
-    Context --> Patcher[generator.ast_patcher<br/>libcst incremental rewrite]
+    Context --> Patcher[generator.ast_patcher<br/>marker-based incremental splicing]
     Renderer --> NewFiles[New files on disk]
     Patcher --> Modified[Modified existing files]
     NewFiles --> Service[Generated FastAPI service]
@@ -30,7 +30,7 @@ an existing one (`feathers add`).
 | `feathers.schema.errors` | Structured validation errors with source-location context |
 | `feathers.generator.context` | Transforms a `ServiceSchema` into the flat dict Jinja2 templates consume |
 | `feathers.generator.renderer` | Jinja2 environment setup, template lookup, idempotent file writer (skip if unchanged) |
-| `feathers.generator.ast_patcher` | libcst-based incremental rewrite for `feathers add` -- inserts routes, models, imports without clobbering hand-written code |
+| `feathers.generator.ast_patcher` | marker-based incremental splicing for `feathers add` -- inserts route handlers above the hand-written fence and writes model stubs without clobbering hand-written code |
 | `feathers.templates.service` | 21 Jinja2 `.j2` templates producing the generated FastAPI project |
 | `feathers.demos` | Example YAML schemas shipped with the package (e.g. `users.yaml`) |
 
@@ -75,21 +75,19 @@ sequenceDiagram
     participant CLI as feathers add
     participant Loader as schema.loader
     participant Schema as ServiceSchema
-    participant Patcher as ast_patcher (libcst)
+    participant Patcher as ast_patcher (marker splicing)
     participant Disk as Project files
 
     CLI->>Loader: load YAML with new endpoint
     Loader->>Schema: validate into ServiceSchema
     CLI->>Disk: read existing router file
     Disk-->>Patcher: source text
-    Patcher->>Patcher: parse CST, locate marker comments
-    Patcher->>Patcher: insert new route / import / model
+    Patcher->>Patcher: check whether handler function already exists
+    Patcher->>Patcher: splice new handler above the hand-written fence (or append)
     Patcher->>Disk: write back modified source
-    CLI->>Disk: read existing model file (if new model)
-    Disk-->>Patcher: source text
-    Patcher->>Patcher: insert new SQLAlchemy class
-    Patcher->>Disk: write back
-    CLI-->>CLI: report added files / modified files
+    CLI->>Disk: check for model file (if new model)
+    Patcher->>Disk: write dataclass stub for any missing model
+    CLI-->>CLI: report (path, "added" / "unchanged") tuples
 ```
 
 ## Layering invariants
@@ -99,4 +97,4 @@ sequenceDiagram
 3. **Repositories never know about HTTP** -- they accept/return SQLAlchemy models or primitives.
 4. **Core imports nothing from the layers above** -- it provides config, DB sessions, and middleware.
 5. **No circular imports** -- the dependency graph is strictly `routers -> services -> repositories -> models`, with `schemas` and `core` as side dependencies.
-6. **Templates are read-only at runtime** -- `feathers add` never modifies templates; it patches generated output via libcst.
+6. **Templates are read-only at runtime** -- `feathers add` never modifies templates; it splices into generated output using `# feathers:` marker comments.
