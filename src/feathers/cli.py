@@ -7,6 +7,7 @@ from pathlib import Path
 
 import typer
 
+from feathers.bench import DEFAULT_ITERATIONS, format_report, run_benchmark
 from feathers.generator import add_endpoint as _add_endpoint
 from feathers.generator import add_model as _add_model
 from feathers.generator import render_service
@@ -102,7 +103,15 @@ def doctor_command() -> None:
 
 
 @app.command("bench")
-def bench_command() -> None:
-    """Run Locust benchmarks — deferred."""
-    typer.echo("feathers bench is coming in v0.2")
-    raise typer.Exit(1)
+def bench_command(
+    iterations: int = typer.Option(
+        DEFAULT_ITERATIONS,
+        "--iterations",
+        "-n",
+        min=1,
+        help="Number of services to scaffold and time.",
+    ),
+) -> None:
+    """Measure service-generation throughput by scaffolding the demo schema."""
+    result = run_benchmark(iterations)
+    typer.echo(format_report(result))

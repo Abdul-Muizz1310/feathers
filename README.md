@@ -251,7 +251,7 @@ hello-users/
 | `feathers add model --schema FILE --service DIR` | Add a new model stub |
 | `feathers lint SCHEMA` | Validate a YAML schema without generating |
 | `feathers doctor` | Environment health check (Python, uv) |
-| `feathers bench` *(v0.2)* | Run Locust benchmarks against a generated service |
+| `feathers bench [-n N]` | Measure generation throughput by scaffolding the demo schema N times (default 50) |
 
 ### Why it's different
 
@@ -314,14 +314,21 @@ uv run pytest -m "not slow"                # skip e2e generation + boot
 - **`feathers-cli` itself** → published to [PyPI](https://pypi.org/project/feathers-cli/) on `v*` tag push via GitHub Actions
 - **Generated services** → deploy to **Render**, **Fly.io**, or **Docker** (target chosen in schema)
 
-### Benchmarks *(v0.2 target)*
+### Benchmarks
 
-| Metric | Target |
-|---|---|
-| Generated `GET /users/{id}` throughput | ≥ 10,000 req/s |
-| Generated `GET /users/{id}` p99 latency | < 30 ms |
+| Metric | Result | Source |
+|---|---|---|
+| Service scaffolded from schema | ~37 ms (median) | `feathers bench` · [benchmarks/report.md](benchmarks/report.md) |
+| Generated `GET /users/{id}` throughput | ≥ 10,000 req/s — **v0.2 target, not yet measured** | requires the DB-backed generated service planned for v0.2 |
+| Generated `GET /users/{id}` p99 latency | < 30 ms — **v0.2 target, not yet measured** | requires the DB-backed generated service planned for v0.2 |
 
-Run via `feathers bench` (Locust) against local Postgres.
+`feathers bench` measures **generation speed** today: it scaffolds the demo
+schema repeatedly and reports median/p95 ms per generation and generations per
+second. It needs no database or network. The request-throughput and latency
+rows are v0.2 targets that require the DB-backed generated service (today's
+generated models are stubs); a Locust-driven load-test mode of `feathers bench`
+will land alongside it. Generation-speed numbers are machine-dependent — see
+[benchmarks/report.md](benchmarks/report.md).
 
 ---
 

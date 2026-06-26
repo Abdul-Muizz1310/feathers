@@ -138,10 +138,20 @@ def test_doctor_runs() -> None:
     assert "python" in result.stdout.lower()
 
 
-def test_bench_deferred() -> None:
-    result = runner.invoke(app, ["bench"])
+def test_bench_reports_generation_speed() -> None:
+    """`feathers bench` scaffolds the demo and prints generation-speed metrics."""
+    result = runner.invoke(app, ["bench", "--iterations", "2"])
+    assert result.exit_code == 0, _plain(result.stdout)
+    out = _plain(result.stdout)
+    assert "services generated: 2" in out
+    assert "ms" in out
+    assert "gen/s" in out
+
+
+def test_bench_rejects_zero_iterations() -> None:
+    """Cover the Typer `min=1` guard on --iterations."""
+    result = runner.invoke(app, ["bench", "--iterations", "0"])
     assert result.exit_code != 0
-    assert "v0.2" in result.stdout or "v0.2" in (result.stderr or "")
 
 
 # ---------------------------------------------------------------------------
