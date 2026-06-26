@@ -50,6 +50,10 @@ _MANIFEST: tuple[TemplateTarget, ...] = (
     TemplateTarget("src/core/__init__.py.j2", "src/{{service_snake}}/core/__init__.py"),
     TemplateTarget("src/core/config.py.j2", "src/{{service_snake}}/core/config.py"),
     TemplateTarget("src/core/platform.py.j2", "src/{{service_snake}}/core/platform.py"),
+    TemplateTarget(
+        "src/core/platform_token.py.j2",
+        "src/{{service_snake}}/core/platform_token.py",
+    ),
     TemplateTarget("src/api/__init__.py.j2", "src/{{service_snake}}/api/__init__.py"),
     TemplateTarget(
         "src/api/routers/__init__.py.j2",
@@ -70,6 +74,7 @@ _MANIFEST: tuple[TemplateTarget, ...] = (
     # Tests (placeholder)
     TemplateTarget("tests/__init__.py.j2", "tests/__init__.py"),
     TemplateTarget("tests/test_health.py.j2", "tests/test_health.py"),
+    TemplateTarget("tests/test_platform_token.py.j2", "tests/test_platform_token.py"),
 )
 
 

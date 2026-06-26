@@ -4,7 +4,8 @@ Provides the cross-cutting concerns every backend needs to be discoverable by a
 control plane:
 
 - ``X-Request-Id`` propagation (generated if absent, echoed on response)
-- ``X-Platform-Token`` placeholder (demo mode accepts any token)
+- ``X-Platform-Token`` verification (demo mode accepts any token; see
+  ``platform_token``)
 - ``/health`` — liveness probe
 - ``/version`` — build identifier
 - ``/metrics`` — Prometheus exposition (via prometheus-fastapi-instrumentator)
@@ -20,11 +21,16 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from {{ service.snake }}.core.config import settings
+from {{ service.snake }}.core.platform_token import install_platform_token
+
 _Handler = Callable[[Request], Awaitable[Response]]
 
 
 def install_platform_middleware(app: FastAPI, *, service_name: str) -> None:
     """Attach platform endpoints and request-id middleware to ``app``."""
+
+    install_platform_token(app, demo_mode=settings.demo_mode)
 
     @app.middleware("http")
     async def _request_id_middleware(request: Request, call_next: _Handler) -> Response:
