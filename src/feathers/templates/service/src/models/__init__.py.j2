@@ -1,1 +1,11 @@
-"""Domain models."""
+"""ORM models. Importing this package registers every table on Base.metadata."""
+
+from __future__ import annotations
+
+from {{ service.snake }}.models.base import Base
+{% for model in models %}from {{ service.snake }}.models.{{ model.snake }} import {{ model.name }}
+{% endfor %}
+__all__ = [
+    "Base",
+{% for model in models %}    "{{ model.name }}",
+{% endfor %}]

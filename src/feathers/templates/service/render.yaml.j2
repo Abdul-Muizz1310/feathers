@@ -4,6 +4,9 @@ services:
     runtime: docker
     plan: free
     healthCheckPath: {{ deploy.health }}
+    preDeployCommand: uv run alembic upgrade head
     envVars:
       - key: PORT
         value: "8000"
+      - key: DATABASE_URL
+        sync: false

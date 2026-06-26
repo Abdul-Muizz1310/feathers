@@ -1,0 +1,46 @@
+"""Business logic for {{ model.name }}.
+
+A thin pass-through to the repository today — this is the seam where you add
+validation, authorization, and cross-entity rules as the service grows. Routers
+call these functions; they never reach the database directly.
+"""
+
+from __future__ import annotations
+
+{% if model.pk.py_type == "UUID" %}from uuid import UUID
+
+{% endif %}from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from {{ service.snake }}.models.{{ model.snake }} import {{ model.name }}
+from {{ service.snake }}.repositories import {{ model.snake }} as repo
+
+
+async def create(session: AsyncSession, data: dict[str, Any]) -> {{ model.name }}:
+    """Create a {{ model.name }}."""
+    return await repo.create(session, data)
+
+
+async def get(session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}) -> {{ model.name }} | None:
+    """Fetch a {{ model.name }} by primary key."""
+    return await repo.get(session, {{ model.pk.name }})
+
+
+async def list_all(
+    session: AsyncSession, *, limit: int = 50, offset: int = 0
+) -> list[{{ model.name }}]:
+    """List {{ model.plural_snake }}."""
+    return await repo.list_all(session, limit=limit, offset=offset)
+
+
+async def update(
+    session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}, data: dict[str, Any]
+) -> {{ model.name }} | None:
+    """Apply a partial update to a {{ model.name }}."""
+    return await repo.update(session, {{ model.pk.name }}, data)
+
+
+async def delete(session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}) -> bool:
+    """Delete a {{ model.name }}."""
+    return await repo.delete(session, {{ model.pk.name }})

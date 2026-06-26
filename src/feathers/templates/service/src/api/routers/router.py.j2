@@ -2,14 +2,73 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+{% if model.pk.py_type == "UUID" %}from uuid import UUID
+
+{% endif %}from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from {{ service.snake }}.core.db import get_session
+from {{ service.snake }}.services import {{ model.snake }} as service
+from {{ service.snake }}.schemas.{{ model.snake }} import (
+    {{ model.name }}Create,
+    {{ model.name }}Response,
+    {{ model.name }}Update,
+)
 
 router = APIRouter(prefix="/{{ model.plural_snake }}", tags=["{{ model.plural_snake }}"])
 
 {% for ep in endpoints if ep.handler.startswith(model.plural_snake + ".") %}
-
-@router.{{ ep.method.lower() }}("{{ ep.path.replace('/' + model.plural_snake, '') or '/' }}")
-async def {{ ep.func_name }}() -> dict[str, str]:
+{%- set path = ep.path.replace("/" + model.plural_snake, "") %}
+{% if ep.action == "create" %}
+@router.{{ ep.method.lower() }}("{{ path }}", response_model={{ model.name }}Response, status_code=201)
+async def {{ ep.func_name }}(
+    body: {{ model.name }}Create, session: AsyncSession = Depends(get_session)
+) -> {{ model.name }}Response:
     """{{ ep.method }} {{ ep.path }}"""
+    obj = await service.create(session, body.model_dump())
+    return {{ model.name }}Response.model_validate(obj)
+{% elif ep.action == "list" %}
+@router.{{ ep.method.lower() }}("{{ path }}", response_model=list[{{ model.name }}Response])
+async def {{ ep.func_name }}(
+    limit: int = 50, offset: int = 0, session: AsyncSession = Depends(get_session)
+) -> list[{{ model.name }}Response]:
+    """{{ ep.method }} {{ ep.path }}"""
+    rows = await service.list_all(session, limit=limit, offset=offset)
+    return [{{ model.name }}Response.model_validate(r) for r in rows]
+{% elif ep.action == "get" %}
+@router.{{ ep.method.lower() }}("{{ path }}", response_model={{ model.name }}Response)
+async def {{ ep.func_name }}(
+    {{ model.pk.name }}: {{ model.pk.py_type }}, session: AsyncSession = Depends(get_session)
+) -> {{ model.name }}Response:
+    """{{ ep.method }} {{ ep.path }}"""
+    obj = await service.get(session, {{ model.pk.name }})
+    if obj is None:
+        raise HTTPException(status_code=404, detail="{{ model.name }} not found")
+    return {{ model.name }}Response.model_validate(obj)
+{% elif ep.action == "update" %}
+@router.{{ ep.method.lower() }}("{{ path }}", response_model={{ model.name }}Response)
+async def {{ ep.func_name }}(
+    {{ model.pk.name }}: {{ model.pk.py_type }},
+    body: {{ model.name }}Update,
+    session: AsyncSession = Depends(get_session),
+) -> {{ model.name }}Response:
+    """{{ ep.method }} {{ ep.path }}"""
+    obj = await service.update(session, {{ model.pk.name }}, body.model_dump(exclude_unset=True))
+    if obj is None:
+        raise HTTPException(status_code=404, detail="{{ model.name }} not found")
+    return {{ model.name }}Response.model_validate(obj)
+{% elif ep.action == "delete" %}
+@router.{{ ep.method.lower() }}("{{ path }}", status_code=204)
+async def {{ ep.func_name }}(
+    {{ model.pk.name }}: {{ model.pk.py_type }}, session: AsyncSession = Depends(get_session)
+) -> None:
+    """{{ ep.method }} {{ ep.path }}"""
+    if not await service.delete(session, {{ model.pk.name }}):
+        raise HTTPException(status_code=404, detail="{{ model.name }} not found")
+{% else %}
+@router.{{ ep.method.lower() }}("{{ path }}")
+async def {{ ep.func_name }}() -> dict[str, str]:
+    """{{ ep.method }} {{ ep.path }} — TODO: implement this custom handler."""
     return {"handler": "{{ ep.handler }}"}
+{% endif %}
 {% endfor %}

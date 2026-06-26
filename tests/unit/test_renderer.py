@@ -58,6 +58,36 @@ def test_no_jinja_delimiters_in_output(users_yaml_path: Path, tmp_path: Path) ->
             assert "{%" not in text, f"jinja leak in {p}"
 
 
+def test_generated_python_is_clean(users_yaml_path: Path, tmp_path: Path) -> None:
+    """Every generated .py file parses and has no run of 3+ blank lines."""
+    import ast
+    import re
+
+    schema = load_schema(users_yaml_path)
+    render_service(schema, out_dir=tmp_path)
+    for p in (tmp_path / "hello_users").rglob("*.py"):
+        text = p.read_text(encoding="utf-8")
+        assert re.search(r"\n\n\n\n", text) is None, f"3+ blank lines in {p}"
+        ast.parse(text)  # raises SyntaxError on invalid output
+
+
+def test_real_crud_router_emitted(users_yaml_path: Path, tmp_path: Path) -> None:
+    """The generated router is real CRUD, not a {handler: ...} stub."""
+    schema = load_schema(users_yaml_path)
+    render_service(schema, out_dir=tmp_path)
+    svc_root = tmp_path / "hello_users" / "src" / "hello_users"
+    router = (svc_root / "api" / "routers" / "users.py").read_text()
+    assert "await service.create(session" in router  # routers → services → repositories
+    assert "UserResponse.model_validate" in router
+    assert '{"handler"' not in router  # no hollow stubs for standard CRUD
+    service = (svc_root / "services" / "user.py").read_text()
+    assert "await repo.create(session" in service  # service delegates to the repository
+    model = (svc_root / "models" / "user.py").read_text()
+    assert "class User(Base):" in model
+    assert "mapped_column" in model
+    assert "@dataclass" not in model  # no longer a placeholder dataclass
+
+
 def test_idempotent(users_yaml_path: Path, tmp_path: Path) -> None:
     schema = load_schema(users_yaml_path)
     render_service(schema, out_dir=tmp_path)

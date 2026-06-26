@@ -1,0 +1,31 @@
+"""Pydantic request/response schemas for {{ model.name }}."""
+
+from __future__ import annotations
+
+{% for line in model.schema_imports %}{{ line }}
+{% endfor %}from pydantic import BaseModel, ConfigDict
+
+
+class {{ model.name }}Create(BaseModel):
+    """Request body for creating a {{ model.name }}."""
+
+{% for f in model.create_fields %}    {{ f.name }}: {{ f.pydantic_type }}{% if f.default_literal is not none %} = {{ f.default_literal }}{% endif %}
+{% endfor %}
+
+class {{ model.name }}Update(BaseModel):
+    """Patch body for a {{ model.name }} — every field optional."""
+
+{% for f in model.create_fields %}    {{ f.name }}: {{ f.pydantic_type }} | None = None
+{% endfor %}
+
+class {{ model.name }}Response(BaseModel):
+    """Response body for a {{ model.name }}."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+{% for f in model.py_fields %}    {{ f.name }}: {{ f.pydantic_type }}{% if f.nullable %} | None{% endif %}
+{% endfor %}
+{%- if model.audit %}    updated_at: datetime
+{% endif %}
+{%- if model.soft_delete %}    deleted_at: datetime | None = None
+{% endif %}

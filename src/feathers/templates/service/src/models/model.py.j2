@@ -1,15 +1,25 @@
-"""{{ model.name }} domain model (placeholder — v0.1.0)."""
+"""{{ model.name }} SQLAlchemy model."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+{% for line in model.model_imports %}{{ line }}
+{% endfor %}from sqlalchemy.orm import Mapped, mapped_column
+
+from {{ service.snake }}.models.base import Base
 
 
-@dataclass
-class {{ model.name }}:
-    """Placeholder dataclass for {{ model.name }}.
+class {{ model.name }}(Base):
+    """{{ model.name }} table."""
 
-    Full SQLAlchemy wiring arrives in v0.2.
-    """
+    __tablename__ = "{{ model.plural_snake }}"
 
-    id: str
+{% for f in model.py_fields %}    {{ f.name }}: Mapped[{{ f.annotation }}] = {{ f.sa_column }}
+{% endfor %}
+{%- if model.audit %}
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+{%- endif %}
+{%- if model.soft_delete %}
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+{%- endif %}

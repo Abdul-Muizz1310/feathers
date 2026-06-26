@@ -1,0 +1,59 @@
+"""Async repository for {{ model.name }} — all {{ model.name }} DB access."""
+
+from __future__ import annotations
+
+{% if model.soft_delete %}from datetime import UTC, datetime
+{% endif %}from typing import Any
+{% if model.pk.py_type == "UUID" %}from uuid import UUID
+{% endif %}
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from {{ service.snake }}.models.{{ model.snake }} import {{ model.name }}
+
+
+async def create(session: AsyncSession, data: dict[str, Any]) -> {{ model.name }}:
+    """Insert a {{ model.name }} and return it (server defaults loaded)."""
+    obj = {{ model.name }}(**data)
+    session.add(obj)
+    await session.flush()
+    await session.refresh(obj)
+    return obj
+
+
+async def get(session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}) -> {{ model.name }} | None:
+    """Fetch a {{ model.name }} by primary key, or None."""
+    return await session.get({{ model.name }}, {{ model.pk.name }})
+
+
+async def list_all(
+    session: AsyncSession, *, limit: int = 50, offset: int = 0
+) -> list[{{ model.name }}]:
+    """List {{ model.plural_snake }}, newest rows last."""
+    stmt = select({{ model.name }}){% if model.soft_delete %}.where({{ model.name }}.deleted_at.is_(None)){% endif %}.limit(limit).offset(offset)
+    return list((await session.scalars(stmt)).all())
+
+
+async def update(
+    session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}, data: dict[str, Any]
+) -> {{ model.name }} | None:
+    """Apply a partial update; returns None if the row does not exist."""
+    obj = await session.get({{ model.name }}, {{ model.pk.name }})
+    if obj is None:
+        return None
+    for key, value in data.items():
+        setattr(obj, key, value)
+    await session.flush()
+    await session.refresh(obj)
+    return obj
+
+
+async def delete(session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}) -> bool:
+    """{% if model.soft_delete %}Soft-{% endif %}delete a {{ model.name }}; returns False if it does not exist."""
+    obj = await session.get({{ model.name }}, {{ model.pk.name }})
+    if obj is None:
+        return False
+{% if model.soft_delete %}    obj.deleted_at = datetime.now(UTC)
+{% else %}    await session.delete(obj)
+{% endif %}    await session.flush()
+    return True

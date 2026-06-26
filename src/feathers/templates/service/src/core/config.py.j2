@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     port: int = 8000
     demo_mode: bool = True
     cors_origins: str = ""
+    # Empty → the app falls back to a local SQLite file (see core/db.py).
+    database_url: str = ""
 
 
 settings = Settings()

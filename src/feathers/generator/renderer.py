@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,7 @@ _MANIFEST: tuple[TemplateTarget, ...] = (
     TemplateTarget("src/main.py.j2", "src/{{service_snake}}/main.py"),
     TemplateTarget("src/core/__init__.py.j2", "src/{{service_snake}}/core/__init__.py"),
     TemplateTarget("src/core/config.py.j2", "src/{{service_snake}}/core/config.py"),
+    TemplateTarget("src/core/db.py.j2", "src/{{service_snake}}/core/db.py"),
     TemplateTarget("src/core/platform.py.j2", "src/{{service_snake}}/core/platform.py"),
     TemplateTarget(
         "src/core/platform_token.py.j2",
@@ -65,16 +67,52 @@ _MANIFEST: tuple[TemplateTarget, ...] = (
         "src/{{service_snake}}/api/routers/{{model_plural_snake}}.py",
         per_model=True,
     ),
+    # Models (SQLAlchemy ORM)
     TemplateTarget("src/models/__init__.py.j2", "src/{{service_snake}}/models/__init__.py"),
+    TemplateTarget("src/models/base.py.j2", "src/{{service_snake}}/models/base.py"),
     TemplateTarget(
         "src/models/model.py.j2",
         "src/{{service_snake}}/models/{{model_snake}}.py",
         per_model=True,
     ),
-    # Tests (placeholder)
+    # Pydantic schemas (per model)
+    TemplateTarget("src/schemas/__init__.py.j2", "src/{{service_snake}}/schemas/__init__.py"),
+    TemplateTarget(
+        "src/schemas/model.py.j2",
+        "src/{{service_snake}}/schemas/{{model_snake}}.py",
+        per_model=True,
+    ),
+    # Repositories (per model)
+    TemplateTarget(
+        "src/repositories/__init__.py.j2",
+        "src/{{service_snake}}/repositories/__init__.py",
+    ),
+    TemplateTarget(
+        "src/repositories/model.py.j2",
+        "src/{{service_snake}}/repositories/{{model_snake}}.py",
+        per_model=True,
+    ),
+    # Services (per model)
+    TemplateTarget("src/services/__init__.py.j2", "src/{{service_snake}}/services/__init__.py"),
+    TemplateTarget(
+        "src/services/model.py.j2",
+        "src/{{service_snake}}/services/{{model_snake}}.py",
+        per_model=True,
+    ),
+    # Alembic migrations
+    TemplateTarget("alembic.ini.j2", "alembic.ini"),
+    TemplateTarget("alembic/env.py.j2", "alembic/env.py"),
+    TemplateTarget("alembic/script.py.mako.j2", "alembic/script.py.mako"),
+    TemplateTarget("alembic/versions/0001_initial.py.j2", "alembic/versions/0001_initial.py"),
+    # Tests
     TemplateTarget("tests/__init__.py.j2", "tests/__init__.py"),
     TemplateTarget("tests/test_health.py.j2", "tests/test_health.py"),
     TemplateTarget("tests/test_platform_token.py.j2", "tests/test_platform_token.py"),
+    TemplateTarget(
+        "tests/test_model.py.j2",
+        "tests/test_{{model_plural_snake}}.py",
+        per_model=True,
+    ),
 )
 
 
@@ -144,6 +182,9 @@ def _render_one(
     except TemplateError as exc:
         raise RendererError(f"template render failed: {item.template}: {exc}") from exc
 
+    if item.output.endswith(".py"):
+        body = _normalize_python(body)
+
     out_path = _render_path(
         item.output,
         service_snake=service_snake,
@@ -154,6 +195,17 @@ def _render_one(
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(body, encoding="utf-8", newline="\n")
     return dest.resolve()
+
+
+def _normalize_python(body: str) -> str:
+    """Tidy generated Python whitespace.
+
+    Conditional Jinja blocks can leave ragged blank lines; collapse any run of
+    3+ blank lines to the PEP 8 maximum of two, and end the file with exactly
+    one newline.
+    """
+    body = re.sub(r"\n{4,}", "\n\n\n", body)
+    return body.rstrip("\n") + "\n"
 
 
 def _render_path(

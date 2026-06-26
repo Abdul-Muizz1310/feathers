@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from feathers.generator import codegen
 from feathers.schema import EndpointDef, FieldDef, ModelDef, ServiceSchema
 
 _SA_TYPES: dict[str, str] = {
@@ -59,21 +60,51 @@ class ModelView:
     def py_fields(self) -> list[dict[str, Any]]:
         out = []
         for f in self.fields:
-            out.append(
-                {
-                    "name": f.name,
-                    "py_type": _PY_TYPES[f.type],
-                    "sa_type": _SA_TYPES[f.type],
-                    "primary": f.primary,
-                    "unique": f.unique,
-                    "indexed": f.indexed,
-                    "nullable": f.nullable,
-                    "max_length": f.max_length,
-                    "values": f.values,
-                    "default": f.default,
-                }
+            entry = {
+                "name": f.name,
+                "py_type": _PY_TYPES[f.type],
+                "sa_type": _SA_TYPES[f.type],
+                "primary": f.primary,
+                "unique": f.unique,
+                "indexed": f.indexed,
+                "nullable": f.nullable,
+                "max_length": f.max_length,
+                "values": f.values,
+                "default": f.default,
+            }
+            # Rendered source fragments consumed directly by the templates.
+            entry["annotation"] = codegen.annotation(entry)
+            entry["sa_column"] = codegen.sa_column(entry)
+            entry["pydantic_type"] = codegen.pydantic_type(entry)
+            entry["sample"] = codegen.sample_literal(entry)
+            entry["default_literal"] = (
+                None if f.default is None else codegen.python_literal(f.default)
             )
+            out.append(entry)
         return out
+
+    @property
+    def pk(self) -> dict[str, Any]:
+        """The primary-key field (first ``primary`` field, else the first field)."""
+        for f in self.py_fields:
+            if f["primary"]:
+                return f
+        return self.py_fields[0]
+
+    @property
+    def create_fields(self) -> list[dict[str, Any]]:
+        """Fields a client supplies on create (no PK, no auto-timestamps)."""
+        return codegen.create_fields(self)
+
+    @property
+    def model_imports(self) -> list[str]:
+        """Minimal import lines for the model module."""
+        return codegen.model_imports(self)
+
+    @property
+    def schema_imports(self) -> list[str]:
+        """Minimal import lines for the Pydantic schema module."""
+        return codegen.schema_imports(self)
 
 
 @dataclass(frozen=True)
@@ -84,6 +115,7 @@ class EndpointView:
     auth: str
     paginate: str
     func_name: str
+    action: str
 
 
 def endpoint_func_name(ep: EndpointDef) -> str:
@@ -129,4 +161,6 @@ def _to_endpoint_view(e: EndpointDef) -> EndpointView:
         auth=e.auth,
         paginate=e.paginate,
         func_name=endpoint_func_name(e),
+        # The CRUD verb — the part after the dot in "<resource>.<action>".
+        action=e.handler.split(".")[-1],
     )

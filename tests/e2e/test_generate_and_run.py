@@ -22,6 +22,32 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+def _assert_crud_roundtrip(base: str) -> None:
+    """Exercise the generated User CRUD against the live, SQLite-backed service."""
+    created = httpx.post(
+        f"{base}/users",
+        json={"email": "a@example.com", "full_name": "Ada", "role": "editor"},
+        timeout=5.0,
+    )
+    assert created.status_code == 201, created.text
+    user = created.json()
+    user_id = user["id"]
+    assert user["email"] == "a@example.com"
+    assert user["role"] == "editor"
+    assert user["created_at"] is not None  # server_default populated via refresh
+
+    fetched = httpx.get(f"{base}/users/{user_id}", timeout=5.0)
+    assert fetched.status_code == 200
+    assert fetched.json()["id"] == user_id
+
+    listed = httpx.get(f"{base}/users", timeout=5.0)
+    assert listed.status_code == 200
+    assert any(row["id"] == user_id for row in listed.json())
+
+    missing = httpx.get(f"{base}/users/00000000-0000-0000-0000-000000000099", timeout=5.0)
+    assert missing.status_code == 404
+
+
 @pytest.mark.slow
 def test_generate_users_service_boots_and_healthchecks(
     users_yaml_path: Path, tmp_path: Path
@@ -52,14 +78,20 @@ def test_generate_users_service_boots_and_healthchecks(
     try:
         deadline = time.time() + 20
         last_exc: Exception | None = None
+        base = f"http://127.0.0.1:{port}"
         while time.time() < deadline:
             try:
-                r = httpx.get(f"http://127.0.0.1:{port}/health", timeout=1.0)
+                r = httpx.get(f"{base}/health", timeout=1.0)
                 if r.status_code == 200:
                     body = r.json()
                     assert body["status"] == "ok"
                     assert body["service"] == "hello_users"
+                    # SQLite schema was created on startup → db probe is healthy.
+                    assert body["db"] == "ok"
+                    _assert_crud_roundtrip(base)
                     return
+            except AssertionError:
+                raise
             except Exception as exc:
                 last_exc = exc
             time.sleep(0.5)

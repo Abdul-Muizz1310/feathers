@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from {{ service.snake }}.core.config import settings
+from {{ service.snake }}.core.db import check_db
 from {{ service.snake }}.core.platform_token import install_platform_token
 
 _Handler = Callable[[Request], Awaitable[Response]]
@@ -49,7 +50,7 @@ def install_platform_middleware(app: FastAPI, *, service_name: str) -> None:
                 "service": service_name,
                 "version": "0.1.0",
                 "commit_sha": commit_sha,
-                "db": "unknown",
+                "db": await check_db(),
             }
         )
 

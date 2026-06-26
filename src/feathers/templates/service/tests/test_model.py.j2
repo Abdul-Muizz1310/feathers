@@ -1,0 +1,41 @@
+"""CRUD test for {{ model.name }} (runs against a local SQLite database)."""
+
+from fastapi.testclient import TestClient
+
+from {{ service.snake }}.main import app
+
+{% set ns = namespace(actions=[]) %}
+{%- for ep in endpoints if ep.handler.startswith(model.plural_snake + ".") %}
+{%- set ns.actions = ns.actions + [ep.action] %}
+{%- endfor %}
+{% if "create" in ns.actions and "get" in ns.actions %}
+
+def test_{{ model.plural_snake }}_create_and_read() -> None:
+    # ``with`` runs the lifespan, which creates the schema on SQLite.
+    with TestClient(app) as client:
+        created = client.post(
+            "/{{ model.plural_snake }}",
+            json={
+{%- for f in model.create_fields %}
+                "{{ f.name }}": {{ f.sample }},
+{%- endfor %}
+            },
+        )
+        assert created.status_code == 201, created.text
+        item_id = created.json()["{{ model.pk.name }}"]
+
+        fetched = client.get(f"/{{ model.plural_snake }}/{item_id}")
+        assert fetched.status_code == 200
+        assert fetched.json()["{{ model.pk.name }}"] == item_id
+{%- if "list" in ns.actions %}
+
+        listed = client.get("/{{ model.plural_snake }}")
+        assert listed.status_code == 200
+        assert any(row["{{ model.pk.name }}"] == item_id for row in listed.json())
+{%- endif %}
+{% else %}
+
+def test_{{ model.plural_snake }}_app_imports() -> None:
+    # No create+get endpoints declared for {{ model.name }}; just assert the app loads.
+    assert app is not None
+{% endif %}
