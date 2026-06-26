@@ -49,11 +49,12 @@ Numbers are machine-dependent: CPU, disk, and filesystem all affect them. Run
 `feathers bench` on your own hardware for a figure that matches your
 environment.
 
-## Generated-service request throughput (v0.2 target)
+## Generated-service request throughput (not yet measured)
 
-A load test of a generated `GET /users/{id}` endpoint (target: >= 10,000
-req/s) is a **v0.2 target and is not yet measured**. It requires the
-DB-backed generated service planned for v0.2; today's generated models are
-stubs with no database wiring, so a meaningful request-per-second load test is
-not yet achievable. When that lands, `feathers bench` will grow a Locust-driven
-mode and the measured request throughput will be recorded here.
+The generated service is now DB-backed — each model emits a SQLAlchemy ORM
+table, an async repository, a service layer, and CRUD routes, and the service
+boots and persists on SQLite (Postgres via `DATABASE_URL`). A request-per-second
+load test of a generated `GET /users/{id}` endpoint is therefore achievable, but
+it is **not yet measured** — no RPS figure is claimed here. The next step is a
+Locust-driven mode of `feathers bench`; the measured throughput and latency will
+be recorded here once it runs.

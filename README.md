@@ -45,7 +45,8 @@ Most scaffolders give you a **dead tree the moment you touch it** — one regene
 
 ## ✨ Features
 
-- 🏗️ **Full service generation** — 21 Jinja2 templates produce a complete FastAPI project
+- 🏗️ **Full service generation** — 34 Jinja2 templates produce a complete FastAPI project
+- 🗄️ **Real persistence, not stubs** — each model emits a SQLAlchemy ORM table, a Pydantic schema set, an async repository, and CRUD routes wired to a session; the service boots and persists on SQLite out of the box (Postgres via `DATABASE_URL`) and ships with Alembic migrations
 - 🔄 **Incremental codegen** — `feathers add endpoint` splices new handlers in via deterministic `# feathers:` markers, with a function-existence check for idempotency
 - 🛡️ **Fence markers** — hand-written code between `# feathers: begin hand-written` fences is never touched
 - ✅ **Schema-first** — Pydantic v2 frozen models validate YAML before any file is written
@@ -224,15 +225,19 @@ feathers/
 hello-users/
 ├── src/hello_users/
 │   ├── main.py                  # FastAPI app + middleware
-│   ├── api/routers/             # One router per model
-│   ├── services/                # Business logic layer
-│   ├── repositories/            # Data access layer
-│   ├── models/                  # Dataclass stubs (SQLAlchemy wiring in v0.2)
-│   ├── schemas/                 # Pydantic DTOs
+│   ├── api/routers/             # One CRUD router per model
+│   ├── services/                # Business-logic layer (the seam for your rules)
+│   ├── repositories/            # Async SQLAlchemy data access
+│   ├── models/                  # SQLAlchemy ORM models
+│   ├── schemas/                 # Pydantic Create/Update/Response DTOs
 │   └── core/
+│       ├── db.py                # async engine + session dependency (SQLite default)
 │       └── platform.py          # /health, /version, X-Request-ID, X-Platform-Token
+├── alembic/                     # migration env + 0001 initial schema
+├── alembic.ini
 ├── tests/
-│   └── test_health.py
+│   ├── test_health.py
+│   └── test_<model>s.py         # generated CRUD test
 ├── .github/workflows/ci.yml     # lint → test → build
 ├── Dockerfile
 ├── Makefile                     # make run | test | lint | format | typecheck
@@ -319,16 +324,17 @@ uv run pytest -m "not slow"                # skip e2e generation + boot
 | Metric | Result | Source |
 |---|---|---|
 | Service scaffolded from schema | ~37 ms (median) | `feathers bench` · [benchmarks/report.md](benchmarks/report.md) |
-| Generated `GET /users/{id}` throughput | ≥ 10,000 req/s — **v0.2 target, not yet measured** | requires the DB-backed generated service planned for v0.2 |
-| Generated `GET /users/{id}` p99 latency | < 30 ms — **v0.2 target, not yet measured** | requires the DB-backed generated service planned for v0.2 |
+| Generated `GET /users/{id}` throughput | **not yet measured** | needs a load-test harness (see below) |
+| Generated `GET /users/{id}` p99 latency | **not yet measured** | needs a load-test harness (see below) |
 
 `feathers bench` measures **generation speed** today: it scaffolds the demo
 schema repeatedly and reports median/p95 ms per generation and generations per
-second. It needs no database or network. The request-throughput and latency
-rows are v0.2 targets that require the DB-backed generated service (today's
-generated models are stubs); a Locust-driven load-test mode of `feathers bench`
-will land alongside it. Generation-speed numbers are machine-dependent — see
-[benchmarks/report.md](benchmarks/report.md).
+second. It needs no database or network. The generated service is now
+DB-backed (real SQLAlchemy CRUD on SQLite/Postgres), so a request-throughput
+and latency benchmark is achievable — but it is **not yet measured**; a
+Locust-driven load-test mode of `feathers bench` is the next step, and no RPS
+figure is claimed until it runs. Generation-speed numbers are machine-dependent
+— see [benchmarks/report.md](benchmarks/report.md).
 
 ---
 
