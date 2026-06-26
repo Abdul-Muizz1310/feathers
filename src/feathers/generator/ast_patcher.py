@@ -12,7 +12,6 @@ A full libcst-based rewrite is deferred to v0.2.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from pathlib import Path
 
 from feathers.generator.context import build_context
@@ -23,16 +22,6 @@ ActionTuple = tuple[Path, str]
 
 class PatcherError(RuntimeError):
     """Raised when an incremental patch cannot be applied."""
-
-
-@dataclass(frozen=True)
-class _HandlerSite:
-    router_file: Path
-    func_name: str
-    method: str
-    path_suffix: str
-    full_path: str
-    handler: str
 
 
 def add_endpoint(*, service_dir: Path, schema: ServiceSchema) -> list[ActionTuple]:
@@ -96,7 +85,6 @@ def add_model(*, service_dir: Path, schema: ServiceSchema) -> list[ActionTuple]:
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 _FENCE_BEGIN = "# feathers: begin hand-written"
-_FENCE_END = "# feathers: end hand-written"
 
 
 def _has_function(path: Path, func_name: str) -> bool:
