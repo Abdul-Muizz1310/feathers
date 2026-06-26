@@ -7,15 +7,18 @@ control plane:
 - ``X-Platform-Token`` placeholder (demo mode accepts any token)
 - ``/health`` — liveness probe
 - ``/version`` — build identifier
+- ``/metrics`` — Prometheus exposition (via prometheus-fastapi-instrumentator)
 """
 
 from __future__ import annotations
 
+import os
 import uuid
 from typing import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 
 _Handler = Callable[[Request], Awaitable[Response]]
 
@@ -30,6 +33,8 @@ def install_platform_middleware(app: FastAPI, *, service_name: str) -> None:
         response.headers["x-request-id"] = rid
         return response
 
+    commit_sha = os.environ.get("GIT_SHA") or os.environ.get("RENDER_GIT_COMMIT", "unknown")
+
     @app.get("/health", include_in_schema=False)
     async def _health() -> JSONResponse:
         return JSONResponse(
@@ -37,10 +42,19 @@ def install_platform_middleware(app: FastAPI, *, service_name: str) -> None:
                 "status": "ok",
                 "service": service_name,
                 "version": "0.1.0",
+                "commit_sha": commit_sha,
                 "db": "unknown",
             }
         )
 
     @app.get("/version", include_in_schema=False)
     async def _version() -> JSONResponse:
-        return JSONResponse({"service": service_name, "version": "0.1.0"})
+        return JSONResponse(
+            {
+                "service": service_name,
+                "version": "0.1.0",
+                "commit_sha": commit_sha,
+            }
+        )
+
+    Instrumentator().instrument(app).expose(app, include_in_schema=False)
