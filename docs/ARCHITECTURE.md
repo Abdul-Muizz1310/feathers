@@ -23,15 +23,15 @@ an existing one (`feathers add`).
 
 | Module | Responsibility |
 |---|---|
-| `feathers.cli` | Typer root; wires subcommands (`new`, `add`, `lint`, `bench`, `doctor`) |
-| `feathers.commands.*` | One file per subcommand; each receives a validated `ServiceSchema` |
-| `feathers.schema.loader` | Reads YAML from disk, resolves includes, returns raw dict |
+| `feathers.cli` | Typer root; every subcommand (`new`, `add endpoint`, `add model`, `lint`, `doctor`, `bench`) is a function in this one module |
+| `feathers.schema.loader` | Reads YAML from disk (or a raw string), parses it, and validates it into a `ServiceSchema`, raising `SchemaError` on any failure |
 | `feathers.schema.service` | Pydantic v2 `ServiceSchema` model tree -- validates every field before any file I/O |
 | `feathers.schema.errors` | Structured validation errors with source-location context |
-| `feathers.generator.context` | Transforms a `ServiceSchema` into the flat dict Jinja2 templates consume |
-| `feathers.generator.renderer` | Jinja2 environment setup, template lookup, idempotent file writer (skip if unchanged) |
+| `feathers.generator.context` | Transforms a `ServiceSchema` into the render context (typed `ModelView`/`EndpointView`/`FieldView`) the Jinja2 templates consume |
+| `feathers.generator.codegen` | Type-sensitive source fragments (SQLAlchemy columns, Pydantic types, import sets) rendered from a `FieldView` |
+| `feathers.generator.renderer` | Jinja2 environment setup, template lookup, and file writing (`feathers new`; overwrite guarded by `--force`) |
 | `feathers.generator.ast_patcher` | marker-based incremental splicing for `feathers add` -- inserts route handlers above the hand-written fence and writes model stubs without clobbering hand-written code |
-| `feathers.templates.service` | 21 Jinja2 `.j2` templates producing the generated FastAPI project |
+| `feathers.templates.service` | 36 Jinja2 `.j2` templates producing the generated FastAPI project |
 | `feathers.demos` | Example YAML schemas shipped with the package (e.g. `users.yaml`) |
 
 ## Generated service architecture
@@ -58,7 +58,7 @@ flowchart TD
 
 ## Template manifest
 
-21 Jinja2 templates organized by category:
+36 Jinja2 templates organized by category (representative selection shown):
 
 | Category | Templates | Purpose |
 |---|---|---|

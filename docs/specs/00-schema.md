@@ -30,8 +30,10 @@ assumes the schema is already valid — all rejection happens here.
 - `test_parses_full_users_demo` — the canonical `demos/users.yaml` loads and equals a
   known-good `ServiceSchema` literal.
 - `test_parses_enum_field_with_values` — enum fields round-trip values list.
-- `test_observability_defaults` — missing `observability` key yields prometheus/otel/structlog defaults.
-- `test_deploy_defaults` — missing `deploy` key yields render/0/`/health`.
+- `test_observability_defaults` — missing `observability` key yields prometheus/structlog defaults; there is no inert `tracing` field.
+- `test_deploy_defaults` — missing `deploy` key yields `/health`; there is no inert `target` field.
+- `test_inert_tracing_key_is_rejected` — an `observability.tracing` key raises `SchemaError` (fails closed, not silently ignored).
+- `test_inert_deploy_target_key_is_rejected` — a `deploy.target` key raises `SchemaError` (fails closed, not silently ignored).
 
 ### Failure
 

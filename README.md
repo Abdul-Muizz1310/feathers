@@ -18,8 +18,8 @@
 $ pip install feathers-cli
 
 $ feathers new --schema demos/users.yaml --name hello-users --out .
-✔ Validated schema (3 models, 5 endpoints)
-✔ Rendered 21 templates
+✔ Validated schema (1 model, 5 endpoints)
+✔ Rendered 36 templates
 ✔ Wrote hello-users/
 
 $ cd hello-users && make run
@@ -45,12 +45,12 @@ Most scaffolders give you a **dead tree the moment you touch it** — one regene
 
 ## ✨ Features
 
-- 🏗️ **Full service generation** — 34 Jinja2 templates produce a complete FastAPI project
+- 🏗️ **Full service generation** — 36 Jinja2 templates produce a complete FastAPI project
 - 🗄️ **Real persistence, not stubs** — each model emits a SQLAlchemy ORM table, a Pydantic schema set, an async repository, and CRUD routes wired to a session; the service boots and persists on SQLite out of the box (Postgres via `DATABASE_URL`) and ships with Alembic migrations
 - 🔄 **Incremental codegen** — `feathers add endpoint` splices new handlers in via deterministic `# feathers:` markers, with a function-existence check for idempotency
 - 🛡️ **Fence markers** — hand-written code between `# feathers: begin hand-written` fences is never touched
 - ✅ **Schema-first** — Pydantic v2 frozen models validate YAML before any file is written
-- 📊 **Observability built-in** — Prometheus metrics, OpenTelemetry tracing, structlog logging
+- 📊 **Observability built-in** — Prometheus `/metrics` + structlog JSON logging, wired from the schema's `observability` block (each option is honored by the generated code; nothing inert)
 - 🐳 **Docker + CI** — Dockerfile, GitHub Actions workflow, Render deploy config
 - 🩺 **Health checks** — `/health` and `/version` endpoints with platform middleware
 - 🔍 **Schema linting** — `feathers lint` validates without generating
@@ -65,7 +65,7 @@ flowchart TD
     YAML[schema.yaml] --> Loader[loader<br/>YAML → dict]
     Loader --> Schema[schema<br/>Pydantic v2 frozen validation]
     Schema --> Context[context<br/>type mapping · snake/pascal · plural]
-    Context --> Renderer[renderer<br/>Jinja2 · 21 templates]
+    Context --> Renderer[renderer<br/>Jinja2 · 36 templates]
     Context --> Patcher[ast_patcher<br/>marker splicing · for feathers add]
     Renderer --> Service[Generated FastAPI service]
     Patcher --> Service
@@ -162,20 +162,24 @@ models:
     audit: true
 
 endpoints:
-  - { method: GET,  path: /users/{id}, handler: user.get,    auth: any }
-  - { method: POST, path: /users,      handler: user.create, auth: admin }
-  - { method: GET,  path: /users,      handler: user.list,   auth: any, paginate: cursor }
+  # handler is "<plural_snake>.<crud verb>" — it must match the model's table
+  # (User → users) for the CRUD route to be generated.
+  - { method: GET,  path: /users/{id}, handler: users.get,    auth: any }
+  - { method: POST, path: /users,      handler: users.create, auth: admin }
+  - { method: GET,  path: /users,      handler: users.list,   auth: any, paginate: cursor }
 
 observability:
   metrics: prometheus
-  tracing: otel
   logging: structlog
 
 deploy:
-  target: render
-  min_instances: 1
   health: /health
 ```
+
+`auth:` roles are enforced per-route by the generated `require_role` dependency
+(active when `DEMO_MODE=false` and a bastion key is configured; fail-open
+otherwise). `paginate: cursor` generates keyset pagination on the primary key;
+`offset` (or `none`) generates offset pagination. Both cap `limit` at 100.
 
 Every field is validated by **frozen Pydantic v2 models** — if the schema is wrong, `feathers` refuses to write a single file.
 
@@ -253,7 +257,7 @@ hello-users/
 |---|---|
 | `feathers new --schema FILE --name NAME --out DIR` | Generate a new service from a schema |
 | `feathers add endpoint --schema FILE --service DIR` | Slot a new endpoint into an existing service |
-| `feathers add model --schema FILE --service DIR` | Add a new model stub |
+| `feathers add model --schema FILE --service DIR` | Write a bare model-stub file to fill in by hand (not wired into the app — unlike `feathers new`) |
 | `feathers lint SCHEMA` | Validate a YAML schema without generating |
 | `feathers doctor` | Environment health check (Python, uv) |
 | `feathers bench [-n N]` | Measure generation throughput by scaffolding the demo schema N times (default 50) |
@@ -266,7 +270,7 @@ hello-users/
 | String templating | **Pydantic v2 schema** validated before any file is written |
 | Hand-wired middleware per service | **Platform middleware** shipped with every generated service |
 | You protect your edits with prayer | **Fence markers** — regen never touches protected regions |
-| Pick your own stack | **Opinionated & consistent** — FastAPI + uv + Alembic + structlog + Prometheus + OTel |
+| Pick your own stack | **Opinionated & consistent** — FastAPI + uv + Alembic + structlog + Prometheus |
 
 ---
 
@@ -294,8 +298,8 @@ uv run pytest -m "not slow"                # skip e2e generation + boot
 
 | Metric | Value |
 |---|---|
-| **Test count** | 63 tests |
-| **Line coverage** | **100%** |
+| **Test count** | 111 tests |
+| **Coverage** | **100%** line + branch (`--cov-branch`) |
 | **E2E** | `@pytest.mark.slow` — generates the users service, `uv sync`, boots uvicorn, hits `/health` |
 | **CI** | GitHub Actions: ruff → mypy → pytest → `uv build` |
 
@@ -305,10 +309,10 @@ uv run pytest -m "not slow"                # skip e2e generation + boot
 
 | Principle | How it shows up |
 |---|---|
-| 🔴 **Spec-TDD** | 63 tests across loader, schema, renderer, AST patcher, CLI. Red-first. |
+| 🔴 **Spec-TDD** | 111 tests across loader, schema, renderer, codegen, AST patcher, CLI, and generated-service wiring. Red-first. |
 | 🚫 **Negative-space programming** | `Literal` types for field types, HTTP methods, auth roles. Frozen Pydantic models. Schema validation rejects invalid input before any file is written. |
 | 🏗️ **MVC-style layering** | `cli → generator → schema`. Each layer has one responsibility and never reaches across. |
-| 🔒 **Typed everything** | `mypy --strict` passes. No `any` in source. Public APIs fully type-hinted. |
+| 🔒 **Typed everything** | `mypy --strict` passes. The context↔codegen field contract is a typed `FieldView` (no untyped dicts across that boundary); `Any` appears only at the YAML-parse edge and in the heterogeneous Jinja render context. Public APIs fully type-hinted. |
 | 🧊 **Pure core, imperative shell** | Schema validation, context building, and rendering are pure. File I/O lives only in the CLI entry points. |
 | 📦 **One responsibility per module** | `loader` (I/O), `service` (schema defs), `context` (view transforms), `renderer` (Jinja), `ast_patcher` (marker splicing). |
 
@@ -317,7 +321,7 @@ uv run pytest -m "not slow"                # skip e2e generation + boot
 ## 🚀 Deploy
 
 - **`feathers-cli` itself** → published to [PyPI](https://pypi.org/project/feathers-cli/) on `v*` tag push via GitHub Actions
-- **Generated services** → deploy to **Render**, **Fly.io**, or **Docker** (target chosen in schema)
+- **Generated services** → ship a **Render blueprint** (`render.yaml`) backed by the generated **Dockerfile**, so they deploy to **Render** or any Docker host
 
 ### Benchmarks
 
