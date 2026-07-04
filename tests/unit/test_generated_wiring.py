@@ -171,6 +171,15 @@ def test_dockerfile_copies_alembic_and_runs_nonroot(service_root: Path) -> None:
     assert "USER app" in dockerfile
 
 
+def test_ci_does_not_require_missing_lockfile(service_root: Path) -> None:
+    """The generator emits no uv.lock, so `uv sync --frozen` fails every fresh
+    project's very first CI run (observed live, 2026-07-04)."""
+    ci = _read(service_root, ".github/workflows/ci.yml")
+    sync_lines = [line for line in ci.splitlines() if "uv sync" in line]
+    assert sync_lines, "generated CI must install deps via uv sync"
+    assert all("--frozen" not in line for line in sync_lines)
+
+
 def test_dockerfile_copies_readme_for_pip_metadata(service_root: Path) -> None:
     """pyproject.toml declares `readme = "README.md"`; if the image lacks the
     file, `pip install .` fails metadata generation and every Docker deploy

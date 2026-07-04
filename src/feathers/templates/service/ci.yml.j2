@@ -13,7 +13,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
       - run: uv python install {{ service.python }}
-      - run: uv sync --frozen --all-extras
+      # No --frozen: the generator does not emit a uv.lock. Run `uv lock`,
+      # commit the lockfile, and add --frozen for fully reproducible CI.
+      - run: uv sync --all-extras
       - run: uv run python -c "import {{ service.snake }}"
 
   test:
@@ -23,7 +25,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
       - run: uv python install {{ service.python }}
-      - run: uv sync --frozen --all-extras
+      # No --frozen: the generator does not emit a uv.lock. Run `uv lock`,
+      # commit the lockfile, and add --frozen for fully reproducible CI.
+      - run: uv sync --all-extras
       - run: uv run pytest
 
   build:
@@ -33,5 +37,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
       - run: uv python install {{ service.python }}
-      - run: uv sync --frozen --all-extras
+      # No --frozen: the generator does not emit a uv.lock. Run `uv lock`,
+      # commit the lockfile, and add --frozen for fully reproducible CI.
+      - run: uv sync --all-extras
       - run: uv build
