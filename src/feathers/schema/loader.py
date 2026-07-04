@@ -59,15 +59,17 @@ def _require_top_keys(data: dict[str, Any], source_path: Path | None) -> None:
 
 
 def _pretty_validation_error(exc: ValidationError) -> str:
+    """Render the first Pydantic error as ``<location>: <message>``.
+
+    Surfaces Pydantic's structured ``loc`` (the offending field path) and
+    ``msg``, and — for scalar inputs, where Pydantic's message lists the valid
+    options but not what was actually supplied — appends the rejected value.
+    """
     first = exc.errors()[0]
     loc = ".".join(str(p) for p in first["loc"])
     msg = first["msg"]
-    # Normalize common Pydantic messages so our enum/method/duplicate/path
-    # test matchers hit the relevant keyword.
-    text = f"{loc}: {msg}"
-    raw = str(exc)
-    for keyword in ("enum", "duplicate", "path", "FETCH", "method", "money", "type"):
-        if keyword in raw and keyword not in text:
-            text += f" ({keyword})"
-            break
+    text = f"{loc}: {msg}" if loc else msg
+    given = first.get("input")
+    if isinstance(given, str | int | float | bool):
+        text += f" (got {given!r})"
     return text

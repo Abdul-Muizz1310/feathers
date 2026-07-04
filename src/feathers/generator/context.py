@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from feathers.generator import codegen
+from feathers.generator.codegen import FieldView
 from feathers.schema import EndpointDef, FieldDef, ModelDef, ServiceSchema
 
 _SA_TYPES: dict[str, str] = {
@@ -57,10 +58,10 @@ class ModelView:
     audit: bool
 
     @property
-    def py_fields(self) -> list[dict[str, Any]]:
-        out = []
+    def py_fields(self) -> list[FieldView]:
+        out: list[FieldView] = []
         for f in self.fields:
-            entry = {
+            entry: FieldView = {
                 "name": f.name,
                 "py_type": _PY_TYPES[f.type],
                 "sa_type": _SA_TYPES[f.type],
@@ -71,8 +72,14 @@ class ModelView:
                 "max_length": f.max_length,
                 "values": f.values,
                 "default": f.default,
+                # Rendered source fragments (filled in below, then consumed by
+                # the templates); seeded so the TypedDict is complete.
+                "annotation": "",
+                "sa_column": "",
+                "pydantic_type": "",
+                "sample": "",
+                "default_literal": None,
             }
-            # Rendered source fragments consumed directly by the templates.
             entry["annotation"] = codegen.annotation(entry)
             entry["sa_column"] = codegen.sa_column(entry)
             entry["pydantic_type"] = codegen.pydantic_type(entry)
@@ -84,7 +91,7 @@ class ModelView:
         return out
 
     @property
-    def pk(self) -> dict[str, Any]:
+    def pk(self) -> FieldView:
         """The primary-key field (first ``primary`` field, else the first field)."""
         for f in self.py_fields:
             if f["primary"]:
@@ -92,7 +99,7 @@ class ModelView:
         return self.py_fields[0]
 
     @property
-    def create_fields(self) -> list[dict[str, Any]]:
+    def create_fields(self) -> list[FieldView]:
         """Fields a client supplies on create (no PK, no auto-timestamps)."""
         return codegen.create_fields(self)
 

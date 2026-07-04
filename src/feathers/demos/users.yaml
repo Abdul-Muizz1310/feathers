@@ -23,9 +23,7 @@ endpoints:
 
 observability:
   metrics: prometheus
-  tracing: otel
   logging: structlog
 
 deploy:
-  target: render
   health: /health

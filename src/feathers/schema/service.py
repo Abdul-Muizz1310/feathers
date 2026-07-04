@@ -69,16 +69,25 @@ class EndpointDef(BaseModel):
 class ObservabilityDef(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    # Only options the generator actually consumes are exposed. `metrics`
+    # gates the Prometheus instrumentator + its dependency; `logging` gates
+    # structlog configuration + its dependency. There is no `tracing` option:
+    # OpenTelemetry is not wired into the generated service and is not a
+    # dependency, so exposing it would be inert config (see audit OPT-1).
+    # `extra="forbid"` makes a stray `tracing:` key fail loudly rather than
+    # silently do nothing.
     metrics: Literal["prometheus", "none"] = "prometheus"
-    tracing: Literal["otel", "none"] = "otel"
     logging: Literal["structlog", "stdlib"] = "structlog"
 
 
 class DeployDef(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    target: Literal["render", "fly", "docker"] = "render"
-    min_instances: int = 0
+    # The generator emits exactly one deploy target: a Render blueprint
+    # (render.yaml) backed by the generated Dockerfile. There is no `target`
+    # switch because no template branches on it — a `render`/`fly`/`docker`
+    # field would be inert config (see audit OPT-1). `extra="forbid"` rejects a
+    # stray `target:` key instead of silently ignoring it.
     health: str = "/health"
 
 

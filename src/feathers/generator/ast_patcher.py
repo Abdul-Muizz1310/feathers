@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from feathers.generator.context import build_context
+from feathers.generator.context import EndpointView, build_context
 from feathers.schema import ServiceSchema
 
 ActionTuple = tuple[Path, str]
@@ -92,14 +92,14 @@ def _has_function(path: Path, func_name: str) -> bool:
     return re.search(rf"^async def {re.escape(func_name)}\b", text, re.MULTILINE) is not None
 
 
-def _append_endpoint_function(path: Path, plural_snake: str, ep: object) -> None:
+def _append_endpoint_function(path: Path, plural_snake: str, ep: EndpointView) -> None:
     """Append a new endpoint function to a router file without touching fences."""
     text = path.read_text(encoding="utf-8")
 
-    method = ep.method  # type: ignore[attr-defined]
-    http_path = ep.path  # type: ignore[attr-defined]
-    handler = ep.handler  # type: ignore[attr-defined]
-    func_name = endpoint_func_name_obj(ep)
+    method = ep.method
+    http_path = ep.path
+    handler = ep.handler
+    func_name = ep.func_name
 
     path_suffix = http_path.replace(f"/{plural_snake}", "", 1) or "/"
     snippet = (
@@ -117,8 +117,3 @@ def _append_endpoint_function(path: Path, plural_snake: str, ep: object) -> None
         new_text = text.rstrip() + snippet
 
     path.write_text(new_text, encoding="utf-8", newline="\n")
-
-
-def endpoint_func_name_obj(ep: object) -> str:
-    handler: str = ep.handler  # type: ignore[attr-defined]
-    return handler.replace(".", "_")

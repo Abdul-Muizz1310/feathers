@@ -8,9 +8,9 @@ from pathlib import Path
 import typer
 
 from feathers.bench import DEFAULT_ITERATIONS, format_report, run_benchmark
+from feathers.generator import PatcherError, render_service
 from feathers.generator import add_endpoint as _add_endpoint
 from feathers.generator import add_model as _add_model
-from feathers.generator import render_service
 from feathers.schema import SchemaError, load_schema
 
 app = typer.Typer(
@@ -63,7 +63,11 @@ def add_endpoint_command(
     except SchemaError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
-    actions = _add_endpoint(service_dir=service, schema=parsed)
+    try:
+        actions = _add_endpoint(service_dir=service, schema=parsed)
+    except PatcherError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
     added = sum(1 for _, a in actions if a == "added")
     typer.echo(f"ok: {added} endpoint(s) added, {len(actions) - added} unchanged")
 
@@ -73,13 +77,22 @@ def add_model_command(
     schema: Path = typer.Option(..., "--schema", "-s"),
     service: Path = typer.Option(Path("."), "--service"),
 ) -> None:
-    """Add models from the schema to an existing service."""
+    """Scaffold an empty model-stub file for each new model, to fill in by hand.
+
+    Unlike ``feathers new`` (which emits a fully wired SQLAlchemy model +
+    Pydantic schemas + repository + service + router), ``add model`` only
+    writes a bare dataclass placeholder and does not wire it into the app.
+    """
     try:
         parsed = load_schema(schema)
     except SchemaError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
-    actions = _add_model(service_dir=service, schema=parsed)
+    try:
+        actions = _add_model(service_dir=service, schema=parsed)
+    except PatcherError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
     added = sum(1 for _, a in actions if a == "added")
     typer.echo(f"ok: {added} model(s) added, {len(actions) - added} unchanged")
 
