@@ -11,6 +11,12 @@ Enforcement is opt-in: with no key configured the middleware fails open, since
 bastion is the only minter and frontends call this service directly in the
 demo deployment. Token format is bastion's ``{sub, role, service, iat, exp}``
 EdDSA JWT (see bastion ``src/lib/gateway/jwt.ts``).
+
+Per-endpoint authorization is enforced by the :func:`require_role` dependency,
+which the router wires onto each route from its schema ``auth:`` role. It shares
+this module's trust model (demo mode and no-key both fail open) and, when
+enforcing, decodes the token's ``role`` claim and rejects insufficient roles
+with ``403``.
 """
 
 from __future__ import annotations
@@ -20,10 +26,13 @@ import os
 import time
 from collections.abc import Awaitable, Callable
 
+import anyio
 import httpx
 import jwt
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+
+from {{ service.snake }}.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +42,10 @@ _HEADER = "x-platform-token"
 _EXEMPT_EXACT = frozenset({"/health", "/version", "/metrics", "/openapi.json"})
 _EXEMPT_PREFIXES = ("/docs", "/redoc")
 _PUBLIC_KEY_TTL_S = 3600.0
+
+# Role hierarchy for per-endpoint `auth:` enforcement. A token satisfies a
+# required role when its own role ranks at least as high.
+_ROLE_RANK: dict[str, int] = {"viewer": 1, "editor": 2, "admin": 3}
 
 # (fetched_at_monotonic, pem) — only used for the BASTION_PUBLIC_KEY_URL path.
 _key_cache: tuple[float, str | None] = (0.0, None)
@@ -97,7 +110,9 @@ def install_platform_token(app: FastAPI, *, demo_mode: bool) -> None:
     async def _platform_token_middleware(request: Request, call_next: _Handler) -> Response:
         if demo_mode or _is_exempt(request.url.path):
             return await call_next(request)
-        pem = load_public_key_pem()
+        # Offload the (blocking) key resolution to a worker thread so a slow
+        # bastion fetch never stalls the event loop / other in-flight requests.
+        pem = await anyio.to_thread.run_sync(load_public_key_pem)
         if pem is None:
             # Enforcement is opt-in; with no key configured we fail open.
             return await call_next(request)
@@ -105,3 +120,40 @@ def install_platform_token(app: FastAPI, *, demo_mode: bool) -> None:
         if not token or not _verify(token, pem):
             return JSONResponse({"error": "invalid platform token"}, status_code=401)
         return await call_next(request)
+
+
+def require_role(required: str) -> Callable[[str | None], Awaitable[None]]:
+    """Build a FastAPI dependency enforcing an endpoint's declared ``auth:`` role.
+
+    Mirrors the middleware's trust model so the two never disagree:
+
+    - In demo mode (the default), every request is accepted.
+    - When enforcing but no bastion key is configured, enforcement is opt-in
+      and the dependency fails open (consistent with the middleware).
+    - Otherwise the ``X-Platform-Token`` must be present and validly signed;
+      ``required="any"`` accepts any authenticated caller, while a concrete
+      role (``viewer``/``editor``/``admin``) requires the token's ``role`` claim
+      to rank at least as high — else ``403``.
+    """
+
+    async def _dependency(
+        x_platform_token: str | None = Header(default=None, alias=_HEADER),
+    ) -> None:
+        if settings.demo_mode:
+            return
+        pem = await anyio.to_thread.run_sync(load_public_key_pem)
+        if pem is None:
+            return
+        if not x_platform_token:
+            raise HTTPException(status_code=401, detail="missing platform token")
+        try:
+            claims = jwt.decode(x_platform_token, pem, algorithms=["EdDSA"])
+        except Exception as exc:
+            raise HTTPException(status_code=401, detail="invalid platform token") from exc
+        if required == "any":
+            return
+        role = str(claims.get("role", ""))
+        if _ROLE_RANK.get(role, 0) < _ROLE_RANK.get(required, 0):
+            raise HTTPException(status_code=403, detail="insufficient role")
+
+    return _dependency

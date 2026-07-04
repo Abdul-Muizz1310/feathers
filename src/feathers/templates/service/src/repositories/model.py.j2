@@ -26,11 +26,42 @@ async def get(session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}
     return await session.get({{ model.name }}, {{ model.pk.name }})
 
 
+# A hard ceiling on how many rows a single list query may return, enforced in
+# the repository so no caller (router bound or otherwise) can exhaust memory.
+MAX_LIMIT = 100
+
+
+def _clamp_limit(limit: int) -> int:
+    return max(1, min(limit, MAX_LIMIT))
+
+
 async def list_all(
     session: AsyncSession, *, limit: int = 50, offset: int = 0
 ) -> list[{{ model.name }}]:
-    """List {{ model.plural_snake }}, newest rows last."""
-    stmt = select({{ model.name }}){% if model.soft_delete %}.where({{ model.name }}.deleted_at.is_(None)){% endif %}.limit(limit).offset(offset)
+    """List {{ model.plural_snake }} with offset pagination (limit hard-capped at MAX_LIMIT)."""
+    stmt = (
+        select({{ model.name }})
+        {%- if model.soft_delete %}
+        .where({{ model.name }}.deleted_at.is_(None))
+        {%- endif %}
+        .order_by({{ model.name }}.{{ model.pk.name }})
+        .limit(_clamp_limit(limit))
+        .offset(max(0, offset))
+    )
+    return list((await session.scalars(stmt)).all())
+
+
+async def list_after(
+    session: AsyncSession, *, cursor: {{ model.pk.py_type }} | None = None, limit: int = 50
+) -> list[{{ model.name }}]:
+    """Keyset (cursor) pagination on {{ model.pk.name }}; pass the last row's {{ model.pk.name }} to page forward."""
+    stmt = select({{ model.name }})
+    {%- if model.soft_delete %}
+    stmt = stmt.where({{ model.name }}.deleted_at.is_(None))
+    {%- endif %}
+    if cursor is not None:
+        stmt = stmt.where({{ model.name }}.{{ model.pk.name }} > cursor)
+    stmt = stmt.order_by({{ model.name }}.{{ model.pk.name }}).limit(_clamp_limit(limit))
     return list((await session.scalars(stmt)).all())
 
 

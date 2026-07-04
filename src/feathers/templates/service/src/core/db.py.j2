@@ -25,10 +25,21 @@ _session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
 def get_engine() -> AsyncEngine:
-    """Get or create the process-wide async engine."""
+    """Get or create the process-wide async engine.
+
+    For non-SQLite (i.e. serverless Postgres such as Neon), enable
+    ``pool_pre_ping`` and a short ``pool_recycle`` so connections dropped during
+    idle compute suspension are detected and replaced instead of handed out dead
+    (which would 500 the first request after any idle window).
+    """
     global _engine
     if _engine is None:
-        _engine = create_async_engine(settings.database_url or DEFAULT_DATABASE_URL, echo=False)
+        url = settings.database_url or DEFAULT_DATABASE_URL
+        kwargs: dict[str, object] = {"echo": False}
+        if not url.startswith("sqlite"):
+            kwargs["pool_pre_ping"] = True
+            kwargs["pool_recycle"] = 300
+        _engine = create_async_engine(url, **kwargs)
     return _engine
 
 

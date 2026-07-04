@@ -13,14 +13,17 @@ control plane:
 
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 from typing import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from prometheus_fastapi_instrumentator import Instrumentator
-
+{% if observability.metrics == "prometheus" %}from prometheus_fastapi_instrumentator import Instrumentator
+{% endif %}{% if observability.logging == "structlog" %}import structlog
+{% endif %}
 from {{ service.snake }}.core.config import settings
 from {{ service.snake }}.core.db import check_db
 from {{ service.snake }}.core.platform_token import install_platform_token
@@ -28,8 +31,41 @@ from {{ service.snake }}.core.platform_token import install_platform_token
 _Handler = Callable[[Request], Awaitable[Response]]
 
 
+def _parse_origins(raw: str) -> list[str]:
+    """Split the comma-separated ``CORS_ORIGINS`` setting; empty → no origins."""
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
+def configure_logging() -> None:
+    """Configure process logging from ``LOG_LEVEL`` (called once at startup)."""
+    level = getattr(logging, settings.log_level.upper(), logging.INFO)
+    logging.basicConfig(level=level)
+{% if observability.logging == "structlog" %}
+    structlog.configure(
+        processors=[
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.JSONRenderer(),
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(level),
+        logger_factory=structlog.PrintLoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+{% endif %}
+
+
 def install_platform_middleware(app: FastAPI, *, service_name: str) -> None:
     """Attach platform endpoints and request-id middleware to ``app``."""
+
+    origins = _parse_origins(settings.cors_origins)
+    if origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     install_platform_token(app, demo_mode=settings.demo_mode)
 
@@ -64,4 +100,5 @@ def install_platform_middleware(app: FastAPI, *, service_name: str) -> None:
             }
         )
 
-    Instrumentator().instrument(app).expose(app, include_in_schema=False)
+{% if observability.metrics == "prometheus" %}    Instrumentator().instrument(app).expose(app, include_in_schema=False)
+{% endif %}

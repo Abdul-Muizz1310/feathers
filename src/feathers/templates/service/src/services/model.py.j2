@@ -30,8 +30,15 @@ async def get(session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}
 async def list_all(
     session: AsyncSession, *, limit: int = 50, offset: int = 0
 ) -> list[{{ model.name }}]:
-    """List {{ model.plural_snake }}."""
+    """List {{ model.plural_snake }} with offset pagination."""
     return await repo.list_all(session, limit=limit, offset=offset)
+
+
+async def list_after(
+    session: AsyncSession, *, cursor: {{ model.pk.py_type }} | None = None, limit: int = 50
+) -> list[{{ model.name }}]:
+    """List {{ model.plural_snake }} with keyset (cursor) pagination."""
+    return await repo.list_after(session, cursor=cursor, limit=limit)
 
 
 async def update(

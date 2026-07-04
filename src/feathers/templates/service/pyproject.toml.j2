@@ -13,9 +13,9 @@ dependencies = [
     "aiosqlite>=0.20",
     "asyncpg>=0.30",
     "alembic>=1.14",
-    "structlog>=24.4",
-    "prometheus-fastapi-instrumentator>=7.0",
-    "pyjwt[crypto]>=2.9",
+{% if observability.logging == "structlog" %}    "structlog>=24.4",
+{% endif %}{% if observability.metrics == "prometheus" %}    "prometheus-fastapi-instrumentator>=7.0",
+{% endif %}    "pyjwt[crypto]>=2.9",
     "httpx>=0.27",
 ]
 
