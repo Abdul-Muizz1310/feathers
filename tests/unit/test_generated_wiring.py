@@ -171,6 +171,16 @@ def test_dockerfile_copies_alembic_and_runs_nonroot(service_root: Path) -> None:
     assert "USER app" in dockerfile
 
 
+def test_dockerfile_copies_readme_for_pip_metadata(service_root: Path) -> None:
+    """pyproject.toml declares `readme = "README.md"`; if the image lacks the
+    file, `pip install .` fails metadata generation and every Docker deploy
+    breaks at build time (observed live on Render, 2026-07-04)."""
+    dockerfile = _read(service_root, "Dockerfile")
+    copy_readme = dockerfile.index("README.md")
+    pip_install = dockerfile.index("pip install")
+    assert copy_readme < pip_install
+
+
 # ── OPT-1: observability config is consumed, not inert ───────────────────────
 
 
