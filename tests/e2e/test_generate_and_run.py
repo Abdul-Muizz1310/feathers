@@ -104,6 +104,38 @@ def test_generate_users_service_boots_and_healthchecks(
             proc.kill()
 
 
+@pytest.mark.slow
+def test_generated_service_passes_its_own_test_suite(users_yaml_path: Path, tmp_path: Path) -> None:
+    """Generate the demo service and run *its* pytest suite end-to-end.
+
+    This is the behavioral guarantee for the generated code paths the audit
+    flagged as inert: the generated tests/test_platform_token.py exercises the
+    per-endpoint role enforcement (401/403/200), and tests/test_users.py drives
+    the CRUD + cursor-paginated list against SQLite.
+    """
+    schema = load_schema(users_yaml_path)
+    render_service(schema, out_dir=tmp_path)
+    service = tmp_path / "hello_users"
+
+    sync = subprocess.run(
+        ["uv", "sync", "--all-extras"],
+        cwd=service,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert sync.returncode == 0, sync.stderr
+
+    run = subprocess.run(
+        ["uv", "run", "pytest", "-q"],
+        cwd=service,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+
+
 def test_generated_service_has_platform_middleware(users_yaml_path: Path, tmp_path: Path) -> None:
     schema = load_schema(users_yaml_path)
     render_service(schema, out_dir=tmp_path)

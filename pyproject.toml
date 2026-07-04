@@ -79,6 +79,7 @@ strict = true
 files = ["src"]
 
 [tool.coverage.run]
+branch = true
 omit = ["src/feathers/templates/**/*.j2"]
 
 [tool.coverage.report]

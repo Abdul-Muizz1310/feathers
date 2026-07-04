@@ -200,6 +200,51 @@ def test_add_model_schema_error_exits_1(tmp_path: Path) -> None:
     assert result.exit_code == 1
 
 
+def test_add_endpoint_nonexistent_service_exits_1(users_yaml_path: Path, tmp_path: Path) -> None:
+    """A bad --service path must surface a clean CLI error, not a raw traceback.
+
+    Regression for the uncaught PatcherError crash: the generator raises
+    PatcherError, and the CLI must translate it to `error: ...` + exit 1.
+    """
+    result = runner.invoke(
+        app,
+        [
+            "add",
+            "endpoint",
+            "--schema",
+            str(users_yaml_path),
+            "--service",
+            str(tmp_path / "does-not-exist"),
+        ],
+    )
+    assert result.exit_code == 1
+    combined = _plain(result.stdout) + _plain(result.stderr or "")
+    assert "error:" in combined
+    assert "service dir not found" in combined
+    # The raw exception type must never leak to the user.
+    assert "Traceback" not in combined
+    assert "PatcherError" not in combined
+
+
+def test_add_model_nonexistent_service_exits_1(users_yaml_path: Path, tmp_path: Path) -> None:
+    """`add model` against a bad --service path exits 1 with a clean error."""
+    result = runner.invoke(
+        app,
+        [
+            "add",
+            "model",
+            "--schema",
+            str(users_yaml_path),
+            "--service",
+            str(tmp_path / "does-not-exist"),
+        ],
+    )
+    assert result.exit_code == 1
+    combined = _plain(result.stdout) + _plain(result.stderr or "")
+    assert "error:" in combined
+    assert "Traceback" not in combined
+
+
 def test_add_endpoint_happy(users_yaml_path: Path, tmp_path: Path) -> None:
     """Cover cli.py:65-67 — add endpoint on generated service."""
     # First generate a service

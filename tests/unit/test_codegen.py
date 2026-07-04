@@ -101,6 +101,35 @@ def test_sa_column_plain_float() -> None:
     assert _field(_models()["Asset"], "ratio")["sa_column"] == "mapped_column(Float())"
 
 
+INT_PK_YAML = """\
+service:
+  name: counters
+models:
+  - name: Counter
+    fields:
+      - { name: code, type: int, primary: true }
+      - { name: label, type: str }
+endpoints: []
+"""
+
+
+def _counter():
+    ctx = build_context(load_schema(INT_PK_YAML))
+    return {m.name: m for m in ctx["models"]}["Counter"]
+
+
+def test_sa_column_non_uuid_primary_key() -> None:
+    """A non-UUID primary key gets primary_key=True but no uuid4 default."""
+    col = _field(_counter(), "code")["sa_column"]
+    assert col == "mapped_column(Integer(), primary_key=True)"
+
+
+def test_schema_imports_without_uuid() -> None:
+    """A model with no UUID field must not import UUID in its schema module."""
+    lines = codegen.schema_imports(_counter())
+    assert not any("uuid" in line.lower() for line in lines)
+
+
 # ── annotation / pydantic_type ───────────────────────────────────────────────
 
 

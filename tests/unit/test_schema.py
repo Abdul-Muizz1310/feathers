@@ -40,14 +40,30 @@ def test_parses_enum_field_with_values(minimal_yaml_text: str) -> None:
 def test_observability_defaults(minimal_yaml_text: str) -> None:
     schema = load_schema(minimal_yaml_text)
     assert schema.observability.metrics == "prometheus"
-    assert schema.observability.tracing == "otel"
     assert schema.observability.logging == "structlog"
+    # `tracing` was removed as inert config (OPT-1); it must not exist.
+    assert not hasattr(schema.observability, "tracing")
 
 
 def test_deploy_defaults(minimal_yaml_text: str) -> None:
     schema = load_schema(minimal_yaml_text)
-    assert schema.deploy.target == "render"
     assert schema.deploy.health == "/health"
+    # `target` was removed as inert config (OPT-1); it must not exist.
+    assert not hasattr(schema.deploy, "target")
+
+
+def test_inert_tracing_key_is_rejected(minimal_yaml_text: str) -> None:
+    """OPT-1: a `tracing:` key no longer silently does nothing — it fails closed."""
+    src = minimal_yaml_text + "\nobservability:\n  tracing: otel\n"
+    with pytest.raises(SchemaError):
+        load_schema(src)
+
+
+def test_inert_deploy_target_key_is_rejected(minimal_yaml_text: str) -> None:
+    """OPT-1: a `deploy.target:` key no longer silently does nothing — it fails closed."""
+    src = minimal_yaml_text + "\ndeploy:\n  target: fly\n"
+    with pytest.raises(SchemaError):
+        load_schema(src)
 
 
 def test_service_schema_is_frozen(minimal_yaml_text: str) -> None:
