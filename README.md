@@ -85,7 +85,7 @@ sequenceDiagram
     User->>CLI: feathers new
     CLI->>Val: validate schema
     Val-->>CLI: ok
-    CLI->>Gen: render 21 templates
+    CLI->>Gen: render 36 templates
     Gen->>FS: write full service tree
 
     User->>CLI: feathers add endpoint
@@ -191,15 +191,17 @@ Every field is validated by **frozen Pydantic v2 models** — if the schema is w
 feathers/
 ├── src/feathers/
 │   ├── cli.py                       # Typer CLI entry point
+│   ├── bench.py                     # generation-throughput benchmark (feathers bench)
 │   ├── generator/
 │   │   ├── ast_patcher.py           # marker-based splicing for feathers add
+│   │   ├── codegen.py               # SQLAlchemy/Pydantic source fragments per field
 │   │   ├── context.py               # Type mapping, naming transforms
 │   │   └── renderer.py              # Jinja2 template rendering
 │   ├── schema/
 │   │   ├── loader.py                # YAML → dict I/O
 │   │   ├── service.py               # Pydantic v2 frozen models
 │   │   └── errors.py                # Schema validation errors
-│   ├── templates/service/           # 21 Jinja2 templates
+│   ├── templates/service/           # 36 Jinja2 templates
 │   │   ├── src/                     # App, routers, services, repos, models, schemas
 │   │   ├── tests/                   # Generated test files
 │   │   ├── Dockerfile.j2
@@ -209,14 +211,21 @@ feathers/
 │   │   └── render.yaml.j2
 │   └── demos/                       # Example YAML schemas
 ├── tests/
+│   ├── test_smoke.py                # packaging: __version__ matches installed metadata
 │   ├── unit/
 │   │   ├── test_ast_patcher.py
+│   │   ├── test_bench.py
 │   │   ├── test_cli.py
+│   │   ├── test_codegen.py
 │   │   ├── test_context.py
+│   │   ├── test_generated_wiring.py # asserts the rendered output is really wired
 │   │   ├── test_renderer.py
 │   │   └── test_schema.py
+│   ├── integration/
+│   │   └── test_postgres_service.py # Testcontainers Postgres: alembic + real CRUD
 │   └── e2e/
 │       └── test_generate_and_run.py # Generates service, boots it, hits /health
+├── .github/dependabot.yml
 ├── .github/workflows/ci.yml
 ├── Makefile
 ├── pyproject.toml
@@ -235,16 +244,19 @@ hello-users/
 │   ├── models/                  # SQLAlchemy ORM models
 │   ├── schemas/                 # Pydantic Create/Update/Response DTOs
 │   └── core/
+│       ├── config.py            # pydantic-settings (DATABASE_URL, DEMO_MODE, CORS…)
 │       ├── db.py                # async engine + session dependency (SQLite default)
-│       └── platform.py          # /health, /version, X-Request-ID, X-Platform-Token
+│       ├── platform.py          # /health, /version, X-Request-ID, /metrics
+│       └── platform_token.py    # X-Platform-Token verification + require_role
 ├── alembic/                     # migration env + 0001 initial schema
 ├── alembic.ini
 ├── tests/
 │   ├── test_health.py
+│   ├── test_platform_token.py   # X-Platform-Token + require_role enforcement
 │   └── test_<model>s.py         # generated CRUD test
 ├── .github/workflows/ci.yml     # lint → test → build
 ├── Dockerfile
-├── Makefile                     # make run | test | lint | format | typecheck
+├── Makefile                     # make run | test
 ├── render.yaml                  # one-click Render deploy
 └── pyproject.toml               # uv-managed
 ```
@@ -280,7 +292,7 @@ hello-users/
 |---|---|
 | CLI framework | **Typer** |
 | YAML validation | **Pydantic v2** (frozen models) |
-| Template engine | **Jinja2** (21 templates per service) |
+| Template engine | **Jinja2** (36 templates per service) |
 | Incremental codegen | **marker-based splicing** (`# feathers:` fences) |
 | Package manager | **uv** |
 | Lint / Types | **ruff** + **mypy strict** |
@@ -293,15 +305,17 @@ hello-users/
 ```bash
 make test                                  # full suite
 uv run pytest --cov=src/feathers --cov-report=term-missing
-uv run pytest -m "not slow"                # skip e2e generation + boot
+make test-fast                             # skip e2e boot + Postgres containers
+make test-integration                      # generated service vs. real Postgres
 ```
 
 | Metric | Value |
 |---|---|
-| **Test count** | 111 tests |
+| **Test count** | 131 tests |
 | **Coverage** | **100%** line + branch (`--cov-branch`) |
 | **E2E** | `@pytest.mark.slow` — generates the users service, `uv sync`, boots uvicorn, hits `/health` |
-| **CI** | GitHub Actions: ruff → mypy → pytest → `uv build` |
+| **Integration** | `@pytest.mark.integration` — Testcontainers Postgres: `alembic upgrade head`, then real CRUD, soft delete and keyset pagination against the container ([spec](docs/specs/05-postgres-integration.md)) |
+| **CI** | GitHub Actions: ruff → mypy → pytest → integration → `uv build` |
 
 ---
 
@@ -309,7 +323,7 @@ uv run pytest -m "not slow"                # skip e2e generation + boot
 
 | Principle | How it shows up |
 |---|---|
-| 🔴 **Spec-TDD** | 111 tests across loader, schema, renderer, codegen, AST patcher, CLI, and generated-service wiring. Red-first. |
+| 🔴 **Spec-TDD** | 131 tests across loader, schema, renderer, codegen, AST patcher, CLI, and generated-service wiring. Red-first. |
 | 🚫 **Negative-space programming** | `Literal` types for field types, HTTP methods, auth roles. Frozen Pydantic models. Schema validation rejects invalid input before any file is written. |
 | 🏗️ **MVC-style layering** | `cli → generator → schema`. Each layer has one responsibility and never reaches across. |
 | 🔒 **Typed everything** | `mypy --strict` passes. The context↔codegen field contract is a typed `FieldView` (no untyped dicts across that boundary); `Any` appears only at the YAML-parse edge and in the heterogeneous Jinja render context. Public APIs fully type-hinted. |

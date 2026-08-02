@@ -10,9 +10,19 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEMOS_DIR = REPO_ROOT / "src" / "feathers" / "demos"
 
 
-@pytest.fixture()
-def users_yaml_path() -> Path:
+@pytest.fixture(scope="session")
+def demo_users_yaml() -> Path:
+    """Session-scoped path to the bundled demo schema (read-only).
+
+    Exists so session/module-scoped fixtures (the Postgres integration tier) can
+    reach the demo schema without widening the function-scoped alias below.
+    """
     return DEMOS_DIR / "users.yaml"
+
+
+@pytest.fixture()
+def users_yaml_path(demo_users_yaml: Path) -> Path:
+    return demo_users_yaml
 
 
 @pytest.fixture()

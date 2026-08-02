@@ -31,6 +31,7 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.7",
     "mypy>=1.13",
+    "testcontainers[postgres]>=4.15",
 ]
 
 [project.urls]
@@ -90,6 +91,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "slow: end-to-end tests that generate a service, sync deps, and boot it",
+    "integration: generated-service tests that need a Docker daemon (Testcontainers Postgres)",
 ]
 
 [dependency-groups]

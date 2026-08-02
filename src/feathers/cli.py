@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -108,10 +110,39 @@ def lint_command(schema: Path = typer.Argument(...)) -> None:
     typer.echo("ok: schema valid")
 
 
+def _uv_version() -> str | None:
+    """Return the installed ``uv`` version, or ``None`` when uv is unusable.
+
+    "Unusable" deliberately covers more than "absent from ``PATH``": a resolved
+    binary that cannot be executed, exits non-zero, or prints nothing is just as
+    useless to a generated (uv-managed) service, so it is reported the same way.
+    """
+    exe = shutil.which("uv")
+    if exe is None:
+        return None
+    try:
+        # `exe` is an absolute path resolved by shutil.which; argv is fixed.
+        proc = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
+
+
 @app.command("doctor")
 def doctor_command() -> None:
-    """Check environment prerequisites."""
+    """Check environment prerequisites (Python, uv)."""
     typer.echo(f"python: {sys.version.split()[0]}")
+    uv = _uv_version()
+    typer.echo(f"uv: {uv if uv else 'not found'}")
+    if uv is None:
+        typer.echo(
+            "error: uv is required — every generated service is uv-managed"
+            " (`uv sync`, `uv run`); install it from https://docs.astral.sh/uv/",
+            err=True,
+        )
+        raise typer.Exit(1)
     typer.echo("ok")
 
 

@@ -15,6 +15,9 @@ import yaml
 from feathers.generator import render_service
 from feathers.schema import load_schema
 
+#: Seconds to wait for a freshly-booted generated service to answer /health.
+HEALTH_DEADLINE_S = 40.0
+
 
 def _free_port() -> int:
     with socket.socket() as s:
@@ -76,7 +79,9 @@ def test_generate_users_service_boots_and_healthchecks(
         stderr=subprocess.PIPE,
     )
     try:
-        deadline = time.time() + 20
+        # Cold CI runners pay for a fresh interpreter + import graph before
+        # uvicorn binds; 40s leaves headroom without hanging a broken boot.
+        deadline = time.time() + HEALTH_DEADLINE_S
         last_exc: Exception | None = None
         base = f"http://127.0.0.1:{port}"
         while time.time() < deadline:

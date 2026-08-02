@@ -123,6 +123,45 @@ def test_repository_emits_cursor_and_offset_methods(service_root: Path) -> None:
     assert "User.id > cursor" in repo  # genuine keyset predicate
 
 
+# ── soft delete must be indistinguishable from absence ───────────────────────
+
+
+def test_soft_deleted_row_is_hidden_from_every_read_path(service_root: Path) -> None:
+    """`soft_delete: true` retains the row, so reads must filter it out.
+
+    Caught by the Postgres integration tier: `list` filtered `deleted_at` but
+    `get`/`update`/`delete` used a raw `session.get()`, so a client that had just
+    received 204 could still read the row and delete it again, forever.
+    """
+    repo = _read(service_root, "src/hello_users/repositories/user.py")
+    assert "async def _live(" in repo
+    assert "obj.deleted_at is not None" in repo
+    for entry in ("async def get(", "async def update(", "async def delete("):
+        assert entry in repo
+    # Exactly one raw primary-key lookup may exist — the one inside `_live`.
+    assert repo.count("session.get(") == 1, "a CRUD path bypasses the soft-delete filter"
+
+
+def test_model_without_soft_delete_hard_deletes_and_has_no_guard(tmp_path: Path) -> None:
+    schema = load_schema(
+        """
+service:
+  name: hard_svc
+models:
+  - name: Item
+    fields:
+      - { name: id, type: uuid, primary: true }
+endpoints:
+  - { method: DELETE, path: "/items/{id}", handler: items.delete, auth: none }
+"""
+    )
+    render_service(schema, out_dir=tmp_path)
+    repo = (tmp_path / "hard_svc" / "src" / "hard_svc" / "repositories" / "item.py").read_text()
+    assert "deleted_at" not in repo
+    assert "await session.delete(obj)" in repo
+    ast.parse(repo)
+
+
 # ── COST-1: bounded limit ────────────────────────────────────────────────────
 
 

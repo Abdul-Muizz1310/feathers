@@ -23,7 +23,8 @@ an existing one (`feathers add`).
 
 | Module | Responsibility |
 |---|---|
-| `feathers.cli` | Typer root; every subcommand (`new`, `add endpoint`, `add model`, `lint`, `doctor`, `bench`) is a function in this one module |
+| `feathers.cli` | Typer root; every subcommand (`new`, `add endpoint`, `add model`, `lint`, `doctor`, `bench`) is declared here -- the command functions parse arguments and delegate, they hold no generation logic |
+| `feathers.bench` | The `feathers bench` engine: scaffolds the bundled demo schema N times through the real `load_schema` / `render_service` entry points and reports timing percentiles |
 | `feathers.schema.loader` | Reads YAML from disk (or a raw string), parses it, and validates it into a `ServiceSchema`, raising `SchemaError` on any failure |
 | `feathers.schema.service` | Pydantic v2 `ServiceSchema` model tree -- validates every field before any file I/O |
 | `feathers.schema.errors` | Structured validation errors with source-location context |
@@ -66,7 +67,7 @@ flowchart TD
 | **Application** | `src/main.py.j2`, `src/__init__.py.j2`, `src/api/__init__.py.j2` | FastAPI app factory + API package init |
 | **Per-model** | `src/api/routers/router.py.j2`, `src/api/routers/__init__.py.j2`, `src/models/model.py.j2`, `src/models/__init__.py.j2` | One router + one model file per YAML model definition |
 | **Core / infra** | `src/core/__init__.py.j2`, `src/core/config.py.j2`, `src/core/platform.py.j2` | Settings, DB engine, platform middleware |
-| **Tests** | `tests/__init__.py.j2`, `tests/test_health.py.j2` | Smoke test scaffold |
+| **Tests** | `tests/__init__.py.j2`, `tests/test_health.py.j2`, `tests/test_platform_token.py.j2`, `tests/test_model.py.j2` | Health smoke test, `X-Platform-Token` / `require_role` enforcement, and a per-model CRUD test |
 
 ## Incremental codegen flow (`feathers add endpoint`)
 

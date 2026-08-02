@@ -37,7 +37,9 @@ If everything passes, you're ready to contribute.
 
 | Target | What it does |
 |---|---|
-| `make test` | Run full pytest suite |
+| `make test` | Run full pytest suite (unit + E2E + Postgres integration) |
+| `make test-fast` | Unit tests only — no generated-service boot, no Docker |
+| `make test-integration` | Generated service vs. a real Postgres container (needs Docker) |
 | `make lint` | ruff check + ruff format --check + mypy |
 | `make format` | Auto-format with ruff |
 | `make typecheck` | mypy strict only |
@@ -52,23 +54,31 @@ If everything passes, you're ready to contribute.
 feathers/
 ├── src/feathers/
 │   ├── cli.py                       # Typer CLI — entry point for all commands
+│   ├── bench.py                     # generation-throughput benchmark (feathers bench)
 │   ├── generator/
 │   │   ├── ast_patcher.py           # marker-based splicing (feathers add)
+│   │   ├── codegen.py               # SQLAlchemy/Pydantic source fragments per field
 │   │   ├── context.py               # Schema → template context transforms
 │   │   └── renderer.py              # Jinja2 template rendering engine
 │   ├── schema/
 │   │   ├── loader.py                # YAML file → dict I/O
 │   │   ├── service.py               # Pydantic v2 frozen schema models
 │   │   └── errors.py                # Schema validation error types
-│   ├── templates/service/           # 21 Jinja2 templates for generated services
+│   ├── templates/service/           # 36 Jinja2 templates for generated services
 │   └── demos/                       # Example YAML schemas
 ├── tests/
+│   ├── test_smoke.py                # packaging: __version__ matches installed metadata
 │   ├── unit/                        # Per-module unit tests
 │   │   ├── test_ast_patcher.py
+│   │   ├── test_bench.py
 │   │   ├── test_cli.py
+│   │   ├── test_codegen.py
 │   │   ├── test_context.py
+│   │   ├── test_generated_wiring.py # asserts the rendered output is really wired
 │   │   ├── test_renderer.py
 │   │   └── test_schema.py
+│   ├── integration/                 # Testcontainers Postgres (marker: integration)
+│   │   └── test_postgres_service.py
 │   └── e2e/                         # End-to-end: generate → boot → hit /health
 │       └── test_generate_and_run.py
 ├── Makefile
@@ -92,7 +102,7 @@ Templates live in `src/feathers/templates/service/`. Each `.j2` file is rendered
 
 4. **Write tests** — add a test in `tests/unit/test_renderer.py` that verifies the template renders correctly with sample input. Check both valid output and edge cases.
 
-5. **Update the template count** in docs if the total changes (currently 21).
+5. **Update the template count** in docs if the total changes (currently 36).
 
 ### Conventions
 
@@ -174,8 +184,12 @@ make test
 # With coverage
 uv run pytest --cov=src/feathers --cov-report=term-missing
 
-# Skip slow E2E tests
-uv run pytest -m "not slow"
+# Skip the slow E2E boot and the Docker-backed Postgres tier
+make test-fast          # == uv run pytest -m "not slow and not integration"
+
+# Generated service against a real Postgres (needs a running Docker daemon;
+# skips itself cleanly when there isn't one)
+make test-integration   # == uv run pytest -m integration
 
 # Run a single test file
 uv run pytest tests/unit/test_schema.py -v
@@ -188,6 +202,9 @@ uv run pytest tests/unit/test_schema.py::test_name -v
 
 - **Unit tests** go in `tests/unit/` — one test file per source module
 - **E2E tests** go in `tests/e2e/` — mark with `@pytest.mark.slow`
+- **Integration tests** go in `tests/integration/` — mark with `@pytest.mark.integration`.
+  These exercise the *generated service* against a real Postgres container
+  (Testcontainers); see [`docs/specs/05-postgres-integration.md`](docs/specs/05-postgres-integration.md)
 - Test files mirror source structure: `schema/service.py` → `unit/test_schema.py`
 
 ---
@@ -221,7 +238,7 @@ uv run pytest tests/unit/test_schema.py::test_name -v
 
 ```bash
 make lint       # ruff check + format check + mypy strict
-make test       # full pytest suite including E2E
+make test       # full pytest suite including E2E + Postgres integration
 make build      # verify the package builds
 ```
 
@@ -234,7 +251,7 @@ All three must pass before opening a PR.
 - [ ] Failing tests written and committed
 - [ ] Implementation makes all tests pass
 - [ ] `make lint` passes (ruff + mypy strict)
-- [ ] `make test` passes (all tests including E2E)
+- [ ] `make test` passes (all tests including E2E + Postgres integration)
 - [ ] `make build` succeeds
 - [ ] README updated if CLI commands or template count changed
 - [ ] No `Any` types introduced

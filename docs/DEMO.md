@@ -40,15 +40,26 @@ In another terminal:
 
 ```bash
 curl http://localhost:8000/health
-# {"status":"ok","service":"hello_users","version":"0.1.0","db":"unknown"}
+# {"status":"ok","service":"hello_users","version":"0.1.0","commit_sha":"unknown","db":"ok"}
 
 curl http://localhost:8000/version
-# {"service":"hello_users","version":"0.1.0"}
+# {"service":"hello_users","version":"0.1.0","commit_sha":"unknown"}
 ```
 
 `/health` and `/version` come for free via the platform middleware that every
 generated service installs at boot. Request IDs are propagated as
 `x-request-id` headers.
+
+Two fields are worth reading closely:
+
+- `db` is a live probe (`SELECT 1`), so it is only ever `"ok"` or `"down"` — never a
+  placeholder. Above it is `"ok"` because no `DATABASE_URL` is set, so the service
+  fell back to a local SQLite file and created the schema during startup. Point
+  `DATABASE_URL` at Postgres and the same probe reports on that connection instead
+  (there, the schema is owned by Alembic — run `uv run alembic upgrade head` first).
+- `commit_sha` is read from `GIT_SHA`, falling back to `RENDER_GIT_COMMIT`; with
+  neither set locally it reports `"unknown"`, while a Render deploy reports the real
+  deployed SHA.
 
 ## 4. Add a new endpoint without rewriting your code
 

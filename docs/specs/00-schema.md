@@ -53,4 +53,5 @@ assumes the schema is already valid — all rejection happens here.
 
 - Every failure case above raises `SchemaError` with a human-readable message.
 - `ServiceSchema` is frozen.
-- 100% branch coverage on `schema/validators.py`.
+- 100% branch coverage on the validation modules — `schema/service.py` (the Pydantic
+  model tree that rejects bad input) and `schema/loader.py` (the I/O + error wrapper).

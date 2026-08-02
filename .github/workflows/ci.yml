@@ -34,10 +34,24 @@ jobs:
           version: "0.9.17"
       - run: uv python install 3.12
       - run: uv sync --frozen --all-extras
-      - run: uv run pytest --cov=src --cov-report=term-missing
+      - run: uv run pytest -m "not integration" --cov=src --cov-report=term-missing
+
+  # The generated service against a real Postgres. Split out because it needs the
+  # runner's Docker daemon (Testcontainers) and pulls a Postgres image.
+  integration:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.9.17"
+      - run: uv python install 3.12
+      - run: uv sync --frozen --all-extras
+      - run: uv run pytest -m integration
 
   build:
-    needs: test
+    needs: [test, integration]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

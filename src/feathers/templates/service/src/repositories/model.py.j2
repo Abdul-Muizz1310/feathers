@@ -21,9 +21,26 @@ async def create(session: AsyncSession, data: dict[str, Any]) -> {{ model.name }
     return obj
 
 
+async def _live(session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}) -> {{ model.name }} | None:
+    """Fetch a {{ model.name }} by primary key, or None.
+{%- if model.soft_delete %}
+
+    The single primary-key lookup every CRUD path goes through, so none of them can
+    forget the soft-delete filter: once ``deleted_at`` is set the row is retained in
+    the database but is indistinguishable from absent to readers and writers alike.
+{%- endif %}
+    """
+    obj = await session.get({{ model.name }}, {{ model.pk.name }})
+{%- if model.soft_delete %}
+    if obj is not None and obj.deleted_at is not None:
+        return None
+{%- endif %}
+    return obj
+
+
 async def get(session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}) -> {{ model.name }} | None:
     """Fetch a {{ model.name }} by primary key, or None."""
-    return await session.get({{ model.name }}, {{ model.pk.name }})
+    return await _live(session, {{ model.pk.name }})
 
 
 # A hard ceiling on how many rows a single list query may return, enforced in
@@ -69,7 +86,7 @@ async def update(
     session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}, data: dict[str, Any]
 ) -> {{ model.name }} | None:
     """Apply a partial update; returns None if the row does not exist."""
-    obj = await session.get({{ model.name }}, {{ model.pk.name }})
+    obj = await _live(session, {{ model.pk.name }})
     if obj is None:
         return None
     for key, value in data.items():
@@ -80,8 +97,8 @@ async def update(
 
 
 async def delete(session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}) -> bool:
-    """{% if model.soft_delete %}Soft-{% endif %}delete a {{ model.name }}; returns False if it does not exist."""
-    obj = await session.get({{ model.name }}, {{ model.pk.name }})
+    """{% if model.soft_delete %}Soft-delete{% else %}Delete{% endif %} a {{ model.name }}; returns False when it is absent{% if model.soft_delete %} or already soft-deleted{% endif %}."""
+    obj = await _live(session, {{ model.pk.name }})
     if obj is None:
         return False
 {% if model.soft_delete %}    obj.deleted_at = datetime.now(UTC)

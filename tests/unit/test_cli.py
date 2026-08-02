@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
+from feathers import cli
 from feathers.cli import app
 
 # mix_stderr is removed in newer Typer; keep runner simple.
@@ -133,9 +136,67 @@ def test_lint_invalid_yaml_exit_one(tmp_path: Path) -> None:
 
 
 def test_doctor_runs() -> None:
+    """`doctor` reports both prerequisites it advertises: Python *and* uv."""
     result = runner.invoke(app, ["doctor"])
-    assert result.exit_code == 0
-    assert "python" in result.stdout.lower()
+    out = _plain(result.stdout).lower()
+    assert result.exit_code == 0, out
+    assert "python" in out
+    assert "uv" in out
+    assert "not found" not in out
+    assert "ok" in out
+
+
+def test_doctor_reports_uv_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The reported uv line carries the version `uv --version` printed."""
+    monkeypatch.setattr(cli.shutil, "which", lambda _name: "/usr/bin/uv")
+    monkeypatch.setattr(
+        cli.subprocess,
+        "run",
+        lambda *a, **k: subprocess.CompletedProcess(a[0], 0, "uv 9.9.9 (abcdef)\n", ""),
+    )
+    result = runner.invoke(app, ["doctor"])
+    out = _plain(result.stdout)
+    assert result.exit_code == 0, out
+    assert "uv 9.9.9 (abcdef)" in out
+
+
+def test_doctor_exits_one_when_uv_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A missing prerequisite must never be reported as `ok`."""
+    monkeypatch.setattr(cli.shutil, "which", lambda _name: None)
+    result = runner.invoke(app, ["doctor"])
+    out = _plain(result.stdout)
+    assert result.exit_code == 1, out
+    assert "uv: not found" in out
+    assert "ok" not in out
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        "nonzero",
+        "oserror",
+        "empty",
+    ],
+)
+def test_doctor_exits_one_when_uv_version_fails(
+    monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    """uv on PATH but unusable is still a missing prerequisite."""
+    monkeypatch.setattr(cli.shutil, "which", lambda _name: "/usr/bin/uv")
+
+    def _run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if outcome == "oserror":
+            raise OSError("exec format error")
+        code = 1 if outcome == "nonzero" else 0
+        stdout = "" if outcome in {"nonzero", "empty"} else "uv 1.0.0"
+        return subprocess.CompletedProcess(["uv"], code, stdout, "boom")
+
+    monkeypatch.setattr(cli.subprocess, "run", _run)
+    result = runner.invoke(app, ["doctor"])
+    out = _plain(result.stdout)
+    assert result.exit_code == 1, out
+    assert "uv: not found" in out
+    assert "ok" not in out
 
 
 def test_bench_reports_generation_speed() -> None:

@@ -1,10 +1,18 @@
-.PHONY: run test lint format typecheck build clean
+.PHONY: run test test-fast test-integration lint format typecheck build clean
 
 run:
 	uv run feathers
 
 test:
 	uv run pytest
+
+# Everything that needs neither a generated-service boot nor a Docker daemon.
+test-fast:
+	uv run pytest -m "not slow and not integration"
+
+# Generated service against a real Postgres (Testcontainers); skips without Docker.
+test-integration:
+	uv run pytest -m integration
 
 lint:
 	uv run ruff check .
