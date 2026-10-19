@@ -10,7 +10,7 @@ synthetic micro-benchmark.
 ### What it measures
 
 - The bundled demo schema (`src/feathers/demos/users.yaml`: 1 model, 5
-  endpoints, ~24 rendered files) is scaffolded into a throwaway temporary
+  endpoints, 41 rendered files as of 0.2.0) is scaffolded into a throwaway temporary
   directory `--iterations` times (default 50).
 - Each generation is timed with `time.perf_counter`. The temp directory is
   deleted before the next iteration, so disk usage stays flat and runs do not
@@ -34,7 +34,21 @@ uv run feathers bench        # from a checkout, without installing
 
 ### Measured result
 
-Captured on this machine on 2026-06-27:
+0.2.0, captured on 2026-10-20 with `feathers bench -n 200` on a shared Linux host
+(Linux 7.0, x86_64, 16 cores, Python 3.12.14) under a load average of ~9 from other
+work — treat it as an upper bound:
+
+| Metric | Value |
+|---|---|
+| Service scaffolded from schema (median) | 153.48 ms |
+| Service scaffolded from schema (p95) | 287.87 ms |
+| Throughput | 6.5 gen/s |
+| Iterations | 200 |
+
+On the same host and load, the pre-0.2 generator's 36-file tree measured a 168.72 ms median (50
+iterations), so the five added templates did not measurably slow generation.
+
+Earlier, 0.1.x on a different machine, captured on 2026-06-27:
 
 | Metric | Value |
 |---|---|

@@ -32,7 +32,7 @@ an existing one (`feathers add`).
 | `feathers.generator.codegen` | Type-sensitive source fragments (SQLAlchemy columns, Pydantic types, import sets) rendered from a `FieldView` |
 | `feathers.generator.renderer` | Jinja2 environment setup, template lookup, and file writing (`feathers new`; overwrite guarded by `--force`) |
 | `feathers.generator.ast_patcher` | marker-based incremental splicing for `feathers add` -- inserts route handlers above the hand-written fence and writes model stubs without clobbering hand-written code |
-| `feathers.templates.service` | 36 Jinja2 `.j2` templates producing the generated FastAPI project |
+| `feathers.templates.service` | 41 Jinja2 `.j2` templates producing the generated FastAPI project |
 | `feathers.demos` | Example YAML schemas shipped with the package (e.g. `users.yaml`) |
 
 ## Generated service architecture
@@ -50,24 +50,28 @@ flowchart TD
     subgraph Core ["core/ (cross-cutting)"]
         Config[config.py<br/>Settings via pydantic-settings]
         DB[db.py<br/>async engine + session]
-        Platform[platform.py<br/>CORS, logging, health, lifespan]
+        Platform[platform.py<br/>CORS, logging, health, request id]
+        Token[platform_token.py<br/>contract-v2 tokens, roles]
+        Limit[rate_limit.py<br/>per-caller 429]
     end
 
     Repo --> DB
-    Router --> Platform
+    Router --> Token
+    Token --> Limit
+    Platform --> Token
 ```
 
 ## Template manifest
 
-36 Jinja2 templates organized by category (representative selection shown):
+41 Jinja2 templates organized by category (representative selection shown):
 
 | Category | Templates | Purpose |
 |---|---|---|
-| **Project-level** | `pyproject.toml.j2`, `Makefile.j2`, `Dockerfile.j2`, `render.yaml.j2`, `ci.yml.j2`, `README.md.j2`, `.env.example.j2`, `.gitignore.j2`, `.python-version.j2` | Build config, CI/CD, deployment, docs |
+| **Project-level** | `pyproject.toml.j2` (incl. ruff + strict mypy config), `Makefile.j2`, `Dockerfile.j2`, `render.yaml.j2`, `ci.yml.j2`, `README.md.j2`, `LICENSE.j2`, `.env.example.j2`, `.gitignore.j2`, `.python-version.j2` | Build config, lint/type gates, CI/CD, deployment, licence, docs |
 | **Application** | `src/main.py.j2`, `src/__init__.py.j2`, `src/api/__init__.py.j2` | FastAPI app factory + API package init |
 | **Per-model** | `src/api/routers/router.py.j2`, `src/api/routers/__init__.py.j2`, `src/models/model.py.j2`, `src/models/__init__.py.j2` | One router + one model file per YAML model definition |
-| **Core / infra** | `src/core/__init__.py.j2`, `src/core/config.py.j2`, `src/core/platform.py.j2` | Settings, DB engine, platform middleware |
-| **Tests** | `tests/__init__.py.j2`, `tests/test_health.py.j2`, `tests/test_platform_token.py.j2`, `tests/test_model.py.j2` | Health smoke test, `X-Platform-Token` / `require_role` enforcement, and a per-model CRUD test |
+| **Core / infra** | `src/core/__init__.py.j2`, `src/core/config.py.j2`, `src/core/db.py.j2`, `src/core/platform.py.j2`, `src/core/platform_token.py.j2`, `src/core/rate_limit.py.j2` | Settings, DB engine, platform middleware, contract-v2 token verification, rate limiting |
+| **Tests** | `tests/__init__.py.j2`, `tests/conftest.py.j2`, `tests/tokens.py.j2`, `tests/test_health.py.j2`, `tests/test_platform_token.py.j2`, `tests/test_rate_limit.py.j2`, `tests/test_model.py.j2` | Isolated DB + contract defaults, a test signing key, health, the contract-v2 conformance cases, the limiter, and per-model CRUD / soft delete / role tests |
 
 ## Incremental codegen flow (`feathers add endpoint`)
 

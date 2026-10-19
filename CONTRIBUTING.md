@@ -64,7 +64,7 @@ feathers/
 │   │   ├── loader.py                # YAML file → dict I/O
 │   │   ├── service.py               # Pydantic v2 frozen schema models
 │   │   └── errors.py                # Schema validation error types
-│   ├── templates/service/           # 36 Jinja2 templates for generated services
+│   ├── templates/service/           # 41 Jinja2 templates for generated services
 │   └── demos/                       # Example YAML schemas
 ├── tests/
 │   ├── test_smoke.py                # packaging: __version__ matches installed metadata
@@ -102,7 +102,12 @@ Templates live in `src/feathers/templates/service/`. Each `.j2` file is rendered
 
 4. **Write tests** — add a test in `tests/unit/test_renderer.py` that verifies the template renders correctly with sample input. Check both valid output and edge cases.
 
-5. **Update the template count** in docs if the total changes (currently 36).
+5. **Update the template count** in docs if the total changes (currently 41).
+
+6. **Refresh the golden manifest deliberately.** `tests/fixtures/users_demo.sha256` pins
+   every file the demo schema generates. After an intended template change, review the
+   rendered diff, then run `FEATHERS_UPDATE_GOLDEN=1 uv run pytest tests/unit/test_generated_project.py`
+   and commit the manifest with the template change.
 
 ### Conventions
 

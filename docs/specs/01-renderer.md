@@ -25,8 +25,10 @@ service template tree with Jinja2 substitutions resolved, writing the result to 
 
 ### Success
 
-- `test_renders_users_demo` — given `demos/users.yaml`, produces the expected file list
-  (snapshot test against a committed list in `tests/fixtures/users_demo_files.txt`).
+- `test_renders_users_demo` — given `demos/users.yaml`, produces the expected files.
+- `test_demo_tree_matches_the_golden_manifest` — the rendered demo tree's paths and
+  SHA-256s equal the committed `tests/fixtures/users_demo.sha256` (refresh deliberately
+  with `FEATHERS_UPDATE_GOLDEN=1`; see spec 07).
 - `test_substitutes_service_name` — the generated `pyproject.toml` contains
   `name = "hello_users"` not `{{ service_name }}`.
 - `test_substitutes_model_snake` — router file is named `users.py` (from `User` model).

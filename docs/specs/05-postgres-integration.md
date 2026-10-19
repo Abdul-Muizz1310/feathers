@@ -28,7 +28,8 @@ and therefore untested by every other tier:
 - **Input**: the bundled `demos/users.yaml` and a throwaway Postgres container.
 - **Pipeline**: YAML → `render_service` → `uv sync` →
   `uv run alembic upgrade head` (with `DATABASE_URL` set to the container) →
-  `uv run uvicorn` → HTTP.
+  `uv run uvicorn` (with `BASTION_SIGNING_KEY_PUBLIC` set to a throwaway key) → HTTP with
+  a freshly minted contract-v2 admin token on every request.
 - **Marker**: `@pytest.mark.integration`, registered in `pyproject.toml`. The fast tier is
   `pytest -m "not slow and not integration"`.
 - **Skip contract**: the tier **skips** — never fails — when the Docker daemon is
@@ -61,7 +62,7 @@ and therefore untested by every other tier:
   → patch (200, field changed) → get unknown UUID (404).
 - `test_soft_delete_hides_row_everywhere_but_keeps_it_in_postgres` — `DELETE /users/{id}`
   returns 204; the row then disappears from `GET /users`, `GET /users/{id}` returns 404,
-  a second `DELETE` returns 404, and `psql` still finds the row with a non-null
+  a second `DELETE` returns 404, `PATCH` returns 404, and `psql` still finds the row with a non-null
   `deleted_at`. Soft delete must be indistinguishable from absence to every reader and
   writer, yet must not become a hard delete on Postgres. (This case is what caught the
   generated repository bug where only `list` filtered `deleted_at`, so a client that had

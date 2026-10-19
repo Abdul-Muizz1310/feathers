@@ -3,7 +3,7 @@
 > ⚡ **Scaffold production FastAPI services from one YAML file — in under 10 seconds.**
 > Incremental codegen that never clobbers your hand-written code.
 
-🔗 [PyPI](https://pypi.org/project/feathers-cli/) · 📖 [Why](WHY.md) · 🏗️ [Architecture](docs/ARCHITECTURE.md) · 🎬 [Demo](docs/DEMO.md) · 📄 [Schema Example](src/feathers/demos/users.yaml)
+🔗 [PyPI](https://pypi.org/project/feathers-cli/) · 📖 [Why](WHY.md) · 🏗️ [Architecture](docs/ARCHITECTURE.md) · 🎬 [Demo](docs/DEMO.md) · 📄 [Schema Example](src/feathers/demos/users.yaml) · 📝 [Changelog](CHANGELOG.md)
 
 ![pypi](https://img.shields.io/pypi/v/feathers-cli?style=flat-square)
 ![python](https://img.shields.io/badge/python-3.12+-3776ab?style=flat-square&logo=python&logoColor=white)
@@ -17,17 +17,18 @@
 ```console
 $ pip install feathers-cli
 
-$ feathers new --schema demos/users.yaml --name hello-users --out .
-✔ Validated schema (1 model, 5 endpoints)
-✔ Rendered 36 templates
-✔ Wrote hello-users/
+$ feathers new --schema users.yaml --name hello_users --out .
+ok: generated hello_users in .
 
-$ cd hello-users && make run
-INFO:     Uvicorn running on http://0.0.0.0:8000
-INFO:     Application startup complete.
+$ cd hello_users && uv sync --all-extras
+$ uv run ruff check . && uv run mypy && uv run pytest -q   # the generated gates
+49 passed
 
-$ feathers add endpoint --schema demos/users.yaml --service ./hello-users
-✔ Patched routers/user.py (hand-written code untouched)
+$ # add `{ method: GET, path: "/users/{id}/audit", handler: users.audit, auth: admin }`
+$ feathers add endpoint --schema users.yaml --service hello_users
+ok: 1 endpoint(s) added, 5 unchanged
+$ feathers add endpoint --schema users.yaml --service hello_users   # re-run: a no-op
+ok: 0 endpoint(s) added, 6 unchanged
 ```
 
 ---
@@ -39,18 +40,20 @@ Most scaffolders give you a **dead tree the moment you touch it** — one regene
 - **Incremental marker-based codegen** — `feathers add` splices new code into existing services without clobbering a single line you wrote.
 - **Fence markers** (`# feathers: begin hand-written`) protect your code forever.
 - **Pydantic v2 frozen models** validate every schema before a single file is written — if the schema is wrong, nothing gets generated.
-- **One YAML file** produces a fully wired FastAPI service: tests, migrations, observability, CI, Docker, and platform middleware — all production-ready.
+- **One YAML file** produces a fully wired FastAPI service: tests, migrations, observability, CI, Docker, an MIT `LICENSE`, and platform auth — and the output passes its own `ruff`, `ruff format`, `mypy --strict` and `pytest` as generated.
 
 ---
 
 ## ✨ Features
 
-- 🏗️ **Full service generation** — 36 Jinja2 templates produce a complete FastAPI project
+- 🏗️ **Full service generation** — 41 Jinja2 templates produce a complete FastAPI project
 - 🗄️ **Real persistence, not stubs** — each model emits a SQLAlchemy ORM table, a Pydantic schema set, an async repository, and CRUD routes wired to a session; the service boots and persists on SQLite out of the box (Postgres via `DATABASE_URL`) and ships with Alembic migrations
 - 🔄 **Incremental codegen** — `feathers add endpoint` splices new handlers in via deterministic `# feathers:` markers, with a function-existence check for idempotency
 - 🛡️ **Fence markers** — hand-written code between `# feathers: begin hand-written` fences is never touched
 - ✅ **Schema-first** — Pydantic v2 frozen models validate YAML before any file is written
 - 📊 **Observability built-in** — Prometheus `/metrics` + structlog JSON logging, wired from the schema's `observability` block (each option is honored by the generated code; nothing inert)
+- 🔐 **Platform token contract v2** — every route except `/health`, `/version`, `/metrics`, the docs and `auth: none` endpoints needs a bastion-signed EdDSA token whose `aud` is the service id (derived from the schema name: `feathers_demo` → `feathers-demo`); 10 s leeway, lifetime ≤ 300 s, no key ⇒ 503 (fail closed), `DEMO_MODE` (default off) only tolerates a *missing* token; roles `viewer < editor < admin`; per-caller (`iss:sub`) rate limit
+- 🧹 **Lint-clean output** — the generated `pyproject.toml` carries ruff + strict mypy config and the generated CI runs them; no dead code (offset/keyset list functions are emitted only when an endpoint uses them)
 - 🐳 **Docker + CI** — Dockerfile, GitHub Actions workflow, Render deploy config
 - 🩺 **Health checks** — `/health` and `/version` endpoints with platform middleware
 - 🔍 **Schema linting** — `feathers lint` validates without generating
@@ -65,7 +68,7 @@ flowchart TD
     YAML[schema.yaml] --> Loader[loader<br/>YAML → dict]
     Loader --> Schema[schema<br/>Pydantic v2 frozen validation]
     Schema --> Context[context<br/>type mapping · snake/pascal · plural]
-    Context --> Renderer[renderer<br/>Jinja2 · 36 templates]
+    Context --> Renderer[renderer<br/>Jinja2 · 41 templates]
     Context --> Patcher[ast_patcher<br/>marker splicing · for feathers add]
     Renderer --> Service[Generated FastAPI service]
     Patcher --> Service
@@ -85,7 +88,7 @@ sequenceDiagram
     User->>CLI: feathers new
     CLI->>Val: validate schema
     Val-->>CLI: ok
-    CLI->>Gen: render 36 templates
+    CLI->>Gen: render 41 templates
     Gen->>FS: write full service tree
 
     User->>CLI: feathers add endpoint
@@ -110,7 +113,7 @@ flowchart TD
     Repo --> Model[models/<br/>SQLAlchemy models]
     Router --> Schema[schemas/<br/>Pydantic DTOs]
     Service --> Schema
-    Platform[core/platform.py<br/>/health · /version · X-Request-ID] --> Router
+    Platform[core/platform.py + platform_token.py<br/>/health · /version · X-Request-ID · token v2] --> Router
 
     style Router fill:#4A90D9,color:#fff
     style Service fill:#7B68EE,color:#fff
@@ -177,9 +180,11 @@ deploy:
 ```
 
 `auth:` roles are enforced per-route by the generated `require_role` dependency
-(active when `DEMO_MODE=false` and a bastion key is configured; fail-open
-otherwise). `paginate: cursor` generates keyset pagination on the primary key;
-`offset` (or `none`) generates offset pagination. Both cap `limit` at 100.
+(`viewer < editor < admin`; `any` = any valid token; `none` = a public route).
+Every other route requires a valid platform token, and with no bastion key
+configured those routes answer 503 — enforcement fails closed, not open.
+`paginate: cursor` generates keyset pagination on the primary key; `offset` (or
+`none`) generates offset pagination. Both cap `limit` at 100.
 
 Every field is validated by **frozen Pydantic v2 models** — if the schema is wrong, `feathers` refuses to write a single file.
 
@@ -201,7 +206,7 @@ feathers/
 │   │   ├── loader.py                # YAML → dict I/O
 │   │   ├── service.py               # Pydantic v2 frozen models
 │   │   └── errors.py                # Schema validation errors
-│   ├── templates/service/           # 36 Jinja2 templates
+│   ├── templates/service/           # 41 Jinja2 templates
 │   │   ├── src/                     # App, routers, services, repos, models, schemas
 │   │   ├── tests/                   # Generated test files
 │   │   ├── Dockerfile.j2
@@ -212,19 +217,24 @@ feathers/
 │   └── demos/                       # Example YAML schemas
 ├── tests/
 │   ├── test_smoke.py                # packaging: __version__ matches installed metadata
+│   ├── shapes.py                    # schema shapes the generated-output tests render
+│   ├── tokens.py                    # mints contract-v2 tokens for the e2e/Postgres tiers
+│   ├── fixtures/users_demo.sha256   # golden manifest of the generated demo tree
 │   ├── unit/
 │   │   ├── test_ast_patcher.py
 │   │   ├── test_bench.py
 │   │   ├── test_cli.py
 │   │   ├── test_codegen.py
 │   │   ├── test_context.py
+│   │   ├── test_generated_lint.py   # generated trees pass their own ruff config
+│   │   ├── test_generated_project.py # LICENSE, lint config, no dead code, golden
 │   │   ├── test_generated_wiring.py # asserts the rendered output is really wired
 │   │   ├── test_renderer.py
 │   │   └── test_schema.py
 │   ├── integration/
 │   │   └── test_postgres_service.py # Testcontainers Postgres: alembic + real CRUD
 │   └── e2e/
-│       └── test_generate_and_run.py # Generates service, boots it, hits /health
+│       └── test_generate_and_run.py # boots the service; runs its own ruff/mypy/pytest
 ├── .github/dependabot.yml
 ├── .github/workflows/ci.yml
 ├── Makefile
@@ -246,19 +256,24 @@ hello-users/
 │   └── core/
 │       ├── config.py            # pydantic-settings (DATABASE_URL, DEMO_MODE, CORS…)
 │       ├── db.py                # async engine + session dependency (SQLite default)
-│       ├── platform.py          # /health, /version, X-Request-ID, /metrics
-│       └── platform_token.py    # X-Platform-Token verification + require_role
+│       ├── platform.py          # /health, /version, X-Request-ID, /metrics, CORS
+│       ├── platform_token.py    # contract-v2 token verification + require_role
+│       └── rate_limit.py        # per-caller fixed-window limiter (429)
 ├── alembic/                     # migration env + 0001 initial schema
 ├── alembic.ini
 ├── tests/
+│   ├── conftest.py              # isolated SQLite per session; contract defaults
+│   ├── tokens.py                # signs real test tokens (no test-mode bypass)
 │   ├── test_health.py
-│   ├── test_platform_token.py   # X-Platform-Token + require_role enforcement
-│   └── test_<model>s.py         # generated CRUD test
-├── .github/workflows/ci.yml     # lint → test → build
+│   ├── test_platform_token.py   # contract-v2 conformance cases + roles + CORS
+│   ├── test_rate_limit.py
+│   └── test_<model>s.py         # CRUD, soft delete ⇒ 404, declared roles ⇒ 403
+├── .github/workflows/ci.yml     # ruff → mypy → pytest → build
 ├── Dockerfile
+├── LICENSE                      # MIT (copyright from the schema)
 ├── Makefile                     # make run | test
 ├── render.yaml                  # one-click Render deploy
-└── pyproject.toml               # uv-managed
+└── pyproject.toml               # uv-managed; ruff + strict mypy config
 ```
 
 ---
@@ -292,7 +307,7 @@ hello-users/
 |---|---|
 | CLI framework | **Typer** |
 | YAML validation | **Pydantic v2** (frozen models) |
-| Template engine | **Jinja2** (36 templates per service) |
+| Template engine | **Jinja2** (41 templates per service) |
 | Incremental codegen | **marker-based splicing** (`# feathers:` fences) |
 | Package manager | **uv** |
 | Lint / Types | **ruff** + **mypy strict** |
@@ -311,10 +326,11 @@ make test-integration                      # generated service vs. real Postgres
 
 | Metric | Value |
 |---|---|
-| **Test count** | 131 tests |
+| **Test count** | 198 tests |
 | **Coverage** | **100%** line + branch (`--cov-branch`) |
-| **E2E** | `@pytest.mark.slow` — generates the users service, `uv sync`, boots uvicorn, hits `/health` |
-| **Integration** | `@pytest.mark.integration` — Testcontainers Postgres: `alembic upgrade head`, then real CRUD, soft delete and keyset pagination against the container ([spec](docs/specs/05-postgres-integration.md)) |
+| **E2E** | `@pytest.mark.slow` — boots the generated users service and drives CRUD with minted tokens; generates the users and kitchen-sink shapes and runs *their* `ruff`, `ruff format`, `mypy --strict` and `pytest` (twice) in their own venvs |
+| **Integration** | `@pytest.mark.integration` — Testcontainers Postgres: `alembic upgrade head`, then real CRUD, soft delete and keyset pagination against the container, with minted tokens ([spec](docs/specs/05-postgres-integration.md)) |
+| **Golden** | `tests/fixtures/users_demo.sha256` pins every generated file; refresh deliberately with `FEATHERS_UPDATE_GOLDEN=1` |
 | **CI** | GitHub Actions: ruff → mypy → pytest → integration → `uv build` |
 
 ---
@@ -323,7 +339,7 @@ make test-integration                      # generated service vs. real Postgres
 
 | Principle | How it shows up |
 |---|---|
-| 🔴 **Spec-TDD** | 131 tests across loader, schema, renderer, codegen, AST patcher, CLI, and generated-service wiring. Red-first. |
+| 🔴 **Spec-TDD** | 198 tests across loader, schema, renderer, codegen, AST patcher, CLI, and generated-service wiring. Red-first. |
 | 🚫 **Negative-space programming** | `Literal` types for field types, HTTP methods, auth roles. Frozen Pydantic models. Schema validation rejects invalid input before any file is written. |
 | 🏗️ **MVC-style layering** | `cli → generator → schema`. Each layer has one responsibility and never reaches across. |
 | 🔒 **Typed everything** | `mypy --strict` passes. The context↔codegen field contract is a typed `FieldView` (no untyped dicts across that boundary); `Any` appears only at the YAML-parse edge and in the heterogeneous Jinja render context. Public APIs fully type-hinted. |
@@ -341,7 +357,7 @@ make test-integration                      # generated service vs. real Postgres
 
 | Metric | Result | Source |
 |---|---|---|
-| Service scaffolded from schema | ~37 ms (median) | `feathers bench` · [benchmarks/report.md](benchmarks/report.md) |
+| Service scaffolded from schema | ~153 ms (median, 0.2.0, shared Linux host) | `feathers bench -n 200` · [benchmarks/report.md](benchmarks/report.md) |
 | Generated `GET /users/{id}` throughput | **not yet measured** | needs a load-test harness (see below) |
 | Generated `GET /users/{id}` p99 latency | **not yet measured** | needs a load-test harness (see below) |
 

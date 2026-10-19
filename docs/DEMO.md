@@ -50,6 +50,19 @@ curl http://localhost:8000/version
 generated service installs at boot. Request IDs are propagated as
 `x-request-id` headers.
 
+Everything else needs a platform token (contract v2). With no bastion key set the
+CRUD routes answer 503 — the service fails closed rather than serving anyone:
+
+```bash
+curl -s http://localhost:8000/users
+# {"detail":"platform_auth_unconfigured"}
+```
+
+Point `BASTION_SIGNING_KEY_PUBLIC` at bastion's Ed25519 public key (base64 SPKI DER)
+and send `X-Platform-Token: <bastion-signed JWT with aud "hello-users">`. The
+generated `tests/tokens.py` shows exactly how such a token is minted, and
+`uv run pytest` exercises every case.
+
 Two fields are worth reading closely:
 
 - `db` is a live probe (`SELECT 1`), so it is only ever `"ok"` or `"down"` — never a
@@ -83,6 +96,6 @@ Re-run from the parent directory:
 feathers add endpoint --schema users.yaml --service hello_users
 ```
 
-The new `users_audit` function is appended to the router. Your
-`AUDIT_ENABLED` line is untouched. Running the same command a second time is
-a no-op — the patcher is idempotent.
+The new `users_audit` function is appended to the router with its declared
+`auth: admin` guard. Your `AUDIT_ENABLED` line is untouched. Running the same
+command a second time is a no-op — the patcher is idempotent.
