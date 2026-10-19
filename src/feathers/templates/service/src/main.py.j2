@@ -7,10 +7,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from {{ service.snake }}.core.db import get_engine, init_models
+{% for model in models | sort(attribute="plural_snake") %}from {{ service.snake }}.api.routers.{{ model.plural_snake }} import router as {{ model.plural_snake }}_router
+{% endfor %}from {{ service.snake }}.core.db import get_engine, init_models
 from {{ service.snake }}.core.platform import configure_logging, install_platform_middleware
-{% for model in models %}from {{ service.snake }}.api.routers.{{ model.plural_snake }} import router as {{ model.plural_snake }}_router
-{%- endfor %}
 
 
 @asynccontextmanager
@@ -26,4 +25,4 @@ app = FastAPI(title="{{ service.name }}", version="0.1.0", lifespan=lifespan)
 install_platform_middleware(app, service_name="{{ service.snake }}")
 
 {% for model in models %}app.include_router({{ model.plural_snake }}_router)
-{%- endfor %}
+{% endfor %}

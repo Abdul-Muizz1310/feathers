@@ -1,4 +1,4 @@
-"""Async repository for {{ model.name }} — all {{ model.name }} DB access."""
+"""Async repository for {{ model.name }} — all {{ model.name }} database access."""
 
 from __future__ import annotations
 
@@ -6,13 +6,16 @@ from __future__ import annotations
 {% endif %}from typing import Any
 {% if model.pk.py_type == "UUID" %}from uuid import UUID
 {% endif %}
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+{% if model.offset_list or model.cursor_list %}from sqlalchemy import select
+{% endif %}from sqlalchemy.ext.asyncio import AsyncSession
 
 from {{ service.snake }}.models.{{ model.snake }} import {{ model.name }}
 
 
-async def create(session: AsyncSession, data: dict[str, Any]) -> {{ model.name }}:
+async def create(
+    session: AsyncSession,
+    data: dict[str, Any],
+) -> {{ model.name }}:
     """Insert a {{ model.name }} and return it (server defaults loaded)."""
     obj = {{ model.name }}(**data)
     session.add(obj)
@@ -21,15 +24,20 @@ async def create(session: AsyncSession, data: dict[str, Any]) -> {{ model.name }
     return obj
 
 
-async def _live(session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}) -> {{ model.name }} | None:
-    """Fetch a {{ model.name }} by primary key, or None.
+async def _live(
+    session: AsyncSession,
+    {{ model.pk.name }}: {{ model.pk.py_type }},
+) -> {{ model.name }} | None:
 {%- if model.soft_delete %}
+    """Fetch a live {{ model.name }} by primary key, or None.
 
     The single primary-key lookup every CRUD path goes through, so none of them can
     forget the soft-delete filter: once ``deleted_at`` is set the row is retained in
     the database but is indistinguishable from absent to readers and writers alike.
-{%- endif %}
     """
+{%- else %}
+    """Fetch a {{ model.name }} by primary key, or None."""
+{%- endif %}
     obj = await session.get({{ model.name }}, {{ model.pk.name }})
 {%- if model.soft_delete %}
     if obj is not None and obj.deleted_at is not None:
@@ -38,9 +46,13 @@ async def _live(session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type 
     return obj
 
 
-async def get(session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}) -> {{ model.name }} | None:
+async def get(
+    session: AsyncSession,
+    {{ model.pk.name }}: {{ model.pk.py_type }},
+) -> {{ model.name }} | None:
     """Fetch a {{ model.name }} by primary key, or None."""
     return await _live(session, {{ model.pk.name }})
+{%- if model.offset_list or model.cursor_list %}
 
 
 # A hard ceiling on how many rows a single list query may return, enforced in
@@ -50,42 +62,53 @@ MAX_LIMIT = 100
 
 def _clamp_limit(limit: int) -> int:
     return max(1, min(limit, MAX_LIMIT))
+{%- endif %}
+{%- if model.offset_list %}
 
 
 async def list_all(
-    session: AsyncSession, *, limit: int = 50, offset: int = 0
+    session: AsyncSession,
+    *,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[{{ model.name }}]:
-    """List {{ model.plural_snake }} with offset pagination (limit hard-capped at MAX_LIMIT)."""
-    stmt = (
-        select({{ model.name }})
-        {%- if model.soft_delete %}
-        .where({{ model.name }}.deleted_at.is_(None))
-        {%- endif %}
-        .order_by({{ model.name }}.{{ model.pk.name }})
-        .limit(_clamp_limit(limit))
-        .offset(max(0, offset))
-    )
+    """List {{ model.plural_snake }} by primary key, ``offset`` rows in (limit capped)."""
+    stmt = select({{ model.name }})
+{%- if model.soft_delete %}
+    stmt = stmt.where({{ model.name }}.deleted_at.is_(None))
+{%- endif %}
+    stmt = stmt.order_by({{ model.name }}.{{ model.pk.name }})
+    stmt = stmt.limit(_clamp_limit(limit)).offset(max(0, offset))
     return list((await session.scalars(stmt)).all())
+{%- endif %}
+{%- if model.cursor_list %}
 
 
 async def list_after(
-    session: AsyncSession, *, cursor: {{ model.pk.py_type }} | None = None, limit: int = 50
+    session: AsyncSession,
+    *,
+    cursor: {{ model.pk.py_type }} | None = None,
+    limit: int = 50,
 ) -> list[{{ model.name }}]:
-    """Keyset (cursor) pagination on {{ model.pk.name }}; pass the last row's {{ model.pk.name }} to page forward."""
+    """List {{ model.plural_snake }} after the ``cursor`` primary key (keyset; limit capped)."""
     stmt = select({{ model.name }})
-    {%- if model.soft_delete %}
+{%- if model.soft_delete %}
     stmt = stmt.where({{ model.name }}.deleted_at.is_(None))
-    {%- endif %}
+{%- endif %}
     if cursor is not None:
         stmt = stmt.where({{ model.name }}.{{ model.pk.name }} > cursor)
-    stmt = stmt.order_by({{ model.name }}.{{ model.pk.name }}).limit(_clamp_limit(limit))
+    stmt = stmt.order_by({{ model.name }}.{{ model.pk.name }})
+    stmt = stmt.limit(_clamp_limit(limit))
     return list((await session.scalars(stmt)).all())
+{%- endif %}
 
 
 async def update(
-    session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}, data: dict[str, Any]
+    session: AsyncSession,
+    {{ model.pk.name }}: {{ model.pk.py_type }},
+    data: dict[str, Any],
 ) -> {{ model.name }} | None:
-    """Apply a partial update; returns None if the row does not exist."""
+    """Apply a partial update; None when the row is absent{% if model.soft_delete %} or soft-deleted{% endif %}."""
     obj = await _live(session, {{ model.pk.name }})
     if obj is None:
         return None
@@ -96,12 +119,21 @@ async def update(
     return obj
 
 
-async def delete(session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}) -> bool:
-    """{% if model.soft_delete %}Soft-delete{% else %}Delete{% endif %} a {{ model.name }}; returns False when it is absent{% if model.soft_delete %} or already soft-deleted{% endif %}."""
+async def delete(
+    session: AsyncSession,
+    {{ model.pk.name }}: {{ model.pk.py_type }},
+) -> bool:
+    """{% if model.soft_delete %}Soft-delete{% else %}Delete{% endif %} a {{ model.name }}; False when it is absent{% if model.soft_delete %} or already deleted{% endif %}."""
+{%- if model.soft_delete %}
     obj = await _live(session, {{ model.pk.name }})
     if obj is None:
         return False
-{% if model.soft_delete %}    obj.deleted_at = datetime.now(UTC)
-{% else %}    await session.delete(obj)
-{% endif %}    await session.flush()
+    obj.deleted_at = datetime.now(UTC)
+{%- else %}
+    obj = await _live(session, {{ model.pk.name }})
+    if obj is None:
+        return False
+    await session.delete(obj)
+{%- endif %}
+    await session.flush()
     return True

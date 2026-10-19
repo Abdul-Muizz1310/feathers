@@ -4,29 +4,51 @@ version = "0.1.0"
 description = "{{ service.description }}"
 readme = "README.md"
 requires-python = ">={{ service.python }}"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
-    "fastapi>=0.115",
-    "uvicorn[standard]>=0.32",
-    "pydantic>=2.9",
-    "pydantic-settings>=2.6",
-    "sqlalchemy[asyncio]>=2.0.36",
-    "aiosqlite>=0.20",
-    "asyncpg>=0.30",
-    "alembic>=1.14",
-{% if observability.logging == "structlog" %}    "structlog>=24.4",
-{% endif %}{% if observability.metrics == "prometheus" %}    "prometheus-fastapi-instrumentator>=7.0",
-{% endif %}    "pyjwt[crypto]>=2.9",
-    "httpx>=0.27",
+    "fastapi>=0.141",
+    "uvicorn[standard]>=0.52.1",
+    "pydantic>=2.13",
+    "pydantic-settings>=2.14",
+    "sqlalchemy[asyncio]>=2.0.52",
+    "aiosqlite>=0.22",
+    "asyncpg>=0.31",
+    "alembic>=1.19.1",
+{% if observability.logging == "structlog" %}    "structlog>=26.1",
+{% endif %}{% if observability.metrics == "prometheus" %}    "prometheus-fastapi-instrumentator>=8.1.0",
+{% endif %}    "pyjwt[crypto]>=2.13.0",
+    "httpx>=0.28",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.3",
+    "pytest>=9.1",
+    # Starlette's TestClient runs on httpx2 (plain httpx there is deprecated).
+    "httpx2>=2.15",
+    "ruff>=0.16.5",
+    "mypy>=2.3.1",
 ]
 
 [build-system]
-requires = ["hatchling>=1.25"]
+requires = ["hatchling>=1.32.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/{{ service.snake }}"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py{{ service.python | replace('.', '') }}"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "{{ service.python }}"
+strict = true
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

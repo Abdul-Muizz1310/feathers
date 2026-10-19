@@ -1,60 +1,84 @@
+{%- set c = model.crud -%}
+{%- set ns = namespace(guarded=false, cursor=false) -%}
+{%- for ep in endpoints if ep.handler.startswith(model.plural_snake + ".") -%}
+{%- set ns.guarded = ns.guarded or ep.auth != "none" -%}
+{%- set ns.cursor = ns.cursor or (ep.action == "list" and ep.paginate == "cursor") -%}
+{%- endfor -%}
+{%- set by_key = "get" in c or "update" in c or "delete" in c -%}
+{%- set dtos = [] -%}
+{%- if "create" in c %}{% set dtos = dtos + [model.name ~ "Create"] %}{% endif -%}
+{%- if "create" in c or "get" in c or "list" in c or "update" in c %}{% set dtos = dtos + [model.name ~ "Response"] %}{% endif -%}
+{%- if "update" in c %}{% set dtos = dtos + [model.name ~ "Update"] %}{% endif -%}
 """Routes for {{ model.name }}."""
 
 from __future__ import annotations
 
-{% if model.pk.py_type == "UUID" %}from uuid import UUID
-
-{% endif %}from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import Annotated
+{% if model.pk.py_type == "UUID" and (by_key or ns.cursor) %}from uuid import UUID
+{% endif %}
+from fastapi import APIRouter, Depends{% if by_key %}, HTTPException{% endif %}{% if "list" in c %}, Query{% endif %}
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from {{ service.snake }}.core.db import get_session
-from {{ service.snake }}.core.platform_token import require_role
-from {{ service.snake }}.services import {{ model.snake }} as service
-from {{ service.snake }}.schemas.{{ model.snake }} import (
-    {{ model.name }}Create,
-    {{ model.name }}Response,
-    {{ model.name }}Update,
+{% if ns.guarded %}from {{ service.snake }}.core.platform_token import require_role
+{% endif %}{% if dtos | length == 1 %}from {{ service.snake }}.schemas.{{ model.snake }} import {{ dtos[0] }}
+{% elif dtos %}from {{ service.snake }}.schemas.{{ model.snake }} import (
+{%- for dto in dtos %}
+    {{ dto }},
+{%- endfor %}
 )
-
+{% endif %}{% if c %}from {{ service.snake }}.services import {{ model.snake }} as service
+{% endif %}
 router = APIRouter(prefix="/{{ model.plural_snake }}", tags=["{{ model.plural_snake }}"])
 
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
 {% for ep in endpoints if ep.handler.startswith(model.plural_snake + ".") %}
-{%- set path = ep.path.replace("/" + model.plural_snake, "") %}
-{%- set guard = "" if ep.auth == "none" else ', dependencies=[Depends(require_role("' ~ ep.auth ~ '"))]' %}
+{%- set guard = "" if ep.auth == "none" else '    dependencies=[Depends(require_role("' ~ ep.auth ~ '"))],\n' %}
 {% if ep.action == "create" %}
-@router.{{ ep.method.lower() }}("{{ path }}", response_model={{ model.name }}Response, status_code=201{{ guard }})
+@router.{{ ep.method.lower() }}(
+    "{{ ep.route_path }}",
+    response_model={{ model.name }}Response,
+    status_code=201,
+{{ guard }})
 async def {{ ep.func_name }}(
-    body: {{ model.name }}Create, session: AsyncSession = Depends(get_session)
+    body: {{ model.name }}Create,
+    session: SessionDep,
 ) -> {{ model.name }}Response:
     """{{ ep.method }} {{ ep.path }}"""
     obj = await service.create(session, body.model_dump())
     return {{ model.name }}Response.model_validate(obj)
 {% elif ep.action == "list" %}
+@router.{{ ep.method.lower() }}(
+    "{{ ep.route_path }}",
+    response_model=list[{{ model.name }}Response],
+{{ guard }})
 {%- if ep.paginate == "cursor" %}
-@router.{{ ep.method.lower() }}("{{ path }}", response_model=list[{{ model.name }}Response]{{ guard }})
 async def {{ ep.func_name }}(
-    limit: int = Query(50, ge=1, le=100),
-    cursor: {{ model.pk.py_type }} | None = Query(None),
-    session: AsyncSession = Depends(get_session),
+    session: SessionDep,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    cursor: Annotated[{{ model.pk.py_type }} | None, Query()] = None,
 ) -> list[{{ model.name }}Response]:
-    """{{ ep.method }} {{ ep.path }} (keyset/cursor pagination on {{ model.pk.name }})"""
+    """{{ ep.method }} {{ ep.path }} (keyset pagination on {{ model.pk.name }})"""
     rows = await service.list_after(session, cursor=cursor, limit=limit)
     return [{{ model.name }}Response.model_validate(r) for r in rows]
 {%- else %}
-@router.{{ ep.method.lower() }}("{{ path }}", response_model=list[{{ model.name }}Response]{{ guard }})
 async def {{ ep.func_name }}(
-    limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    session: AsyncSession = Depends(get_session),
+    session: SessionDep,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[{{ model.name }}Response]:
-    """{{ ep.method }} {{ ep.path }}"""
+    """{{ ep.method }} {{ ep.path }} (offset pagination)"""
     rows = await service.list_all(session, limit=limit, offset=offset)
     return [{{ model.name }}Response.model_validate(r) for r in rows]
 {%- endif %}
 {% elif ep.action == "get" %}
-@router.{{ ep.method.lower() }}("{{ path }}", response_model={{ model.name }}Response{{ guard }})
+@router.{{ ep.method.lower() }}(
+    "{{ ep.route_path }}",
+    response_model={{ model.name }}Response,
+{{ guard }})
 async def {{ ep.func_name }}(
-    {{ model.pk.name }}: {{ model.pk.py_type }}, session: AsyncSession = Depends(get_session)
+    {{ model.pk.name }}: {{ model.pk.py_type }},
+    session: SessionDep,
 ) -> {{ model.name }}Response:
     """{{ ep.method }} {{ ep.path }}"""
     obj = await service.get(session, {{ model.pk.name }})
@@ -62,11 +86,14 @@ async def {{ ep.func_name }}(
         raise HTTPException(status_code=404, detail="{{ model.name }} not found")
     return {{ model.name }}Response.model_validate(obj)
 {% elif ep.action == "update" %}
-@router.{{ ep.method.lower() }}("{{ path }}", response_model={{ model.name }}Response{{ guard }})
+@router.{{ ep.method.lower() }}(
+    "{{ ep.route_path }}",
+    response_model={{ model.name }}Response,
+{{ guard }})
 async def {{ ep.func_name }}(
     {{ model.pk.name }}: {{ model.pk.py_type }},
     body: {{ model.name }}Update,
-    session: AsyncSession = Depends(get_session),
+    session: SessionDep,
 ) -> {{ model.name }}Response:
     """{{ ep.method }} {{ ep.path }}"""
     obj = await service.update(session, {{ model.pk.name }}, body.model_dump(exclude_unset=True))
@@ -74,15 +101,21 @@ async def {{ ep.func_name }}(
         raise HTTPException(status_code=404, detail="{{ model.name }} not found")
     return {{ model.name }}Response.model_validate(obj)
 {% elif ep.action == "delete" %}
-@router.{{ ep.method.lower() }}("{{ path }}", status_code=204{{ guard }})
+@router.{{ ep.method.lower() }}(
+    "{{ ep.route_path }}",
+    status_code=204,
+{{ guard }})
 async def {{ ep.func_name }}(
-    {{ model.pk.name }}: {{ model.pk.py_type }}, session: AsyncSession = Depends(get_session)
+    {{ model.pk.name }}: {{ model.pk.py_type }},
+    session: SessionDep,
 ) -> None:
     """{{ ep.method }} {{ ep.path }}"""
     if not await service.delete(session, {{ model.pk.name }}):
         raise HTTPException(status_code=404, detail="{{ model.name }} not found")
 {% else %}
-@router.{{ ep.method.lower() }}("{{ path }}"{{ guard }})
+@router.{{ ep.method.lower() }}(
+    "{{ ep.route_path }}",
+{{ guard }})
 async def {{ ep.func_name }}() -> dict[str, str]:
     """{{ ep.method }} {{ ep.path }} — TODO: implement this custom handler."""
     return {"handler": "{{ ep.handler }}"}

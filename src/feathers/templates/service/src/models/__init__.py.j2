@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from {{ service.snake }}.models.base import Base
-{% for model in models %}from {{ service.snake }}.models.{{ model.snake }} import {{ model.name }}
-{% endfor %}
+{% set ns = namespace(base_done=false) -%}
+{% for model in models | sort(attribute="snake") -%}
+{% if not ns.base_done and model.snake > "base" %}from {{ service.snake }}.models.base import Base
+{% set ns.base_done = true %}{% endif %}from {{ service.snake }}.models.{{ model.snake }} import {{ model.name }}
+{% endfor %}{% if not ns.base_done %}from {{ service.snake }}.models.base import Base
+{% endif %}
 __all__ = [
-    "Base",
-{% for model in models %}    "{{ model.name }}",
-{% endfor %}]
+{%- for name in (["Base"] + (models | map(attribute="name") | list)) | sort(case_sensitive=true) %}
+    "{{ name }}",
+{%- endfor %}
+]

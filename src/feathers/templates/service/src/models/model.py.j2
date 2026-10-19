@@ -13,13 +13,11 @@ class {{ model.name }}(Base):
 
     __tablename__ = "{{ model.plural_snake }}"
 
-{% for f in model.py_fields %}    {{ f.name }}: Mapped[{{ f.annotation }}] = {{ f.sa_column }}
+{% for f in model.py_fields %}{{ f.column }}
 {% endfor %}
-{%- if model.audit %}
-    updated_at: Mapped[datetime] = mapped_column(
+{%- if model.audit %}    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-{%- endif %}
-{%- if model.soft_delete %}
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-{%- endif %}
+{% endif %}
+{%- if model.soft_delete %}    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+{% endif %}

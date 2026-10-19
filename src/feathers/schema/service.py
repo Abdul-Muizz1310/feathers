@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+# A service name becomes the Python package (snake_case) and the platform-token
+# audience (kebab-case), so it must be an identifier that maps cleanly onto both.
+_SERVICE_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
+# Endpoint paths are embedded in generated string literals and route regexes: allow
+# only plain URL segments and `{identifier}` parameters, nothing that needs escaping.
+_PATH_SEGMENT = re.compile(r"[A-Za-z0-9._~-]+|\{[A-Za-z_][A-Za-z0-9_]*\}")
 
 FieldType = Literal["uuid", "str", "int", "float", "bool", "datetime", "enum", "json", "text"]
 HttpMethod = Literal["GET", "POST", "PATCH", "PUT", "DELETE"]
@@ -63,6 +71,13 @@ class EndpointDef(BaseModel):
     def _path_leading_slash(self) -> EndpointDef:
         if not self.path.startswith("/"):
             raise ValueError(f"endpoint path must start with '/': {self.path!r}")
+        if self.path != "/" and not all(
+            _PATH_SEGMENT.fullmatch(segment) for segment in self.path[1:].split("/")
+        ):
+            raise ValueError(
+                f"endpoint path segments must be plain (A-Z a-z 0-9 . _ ~ -) or a"
+                f" {{parameter}}: {self.path!r}"
+            )
         return self
 
 
@@ -97,6 +112,19 @@ class ServiceMeta(BaseModel):
     name: str
     description: str = ""
     python: str = "3.12"
+    # The generated LICENSE's "Copyright (c) <copyright>" line. A schema field rather
+    # than the current date, so regeneration stays byte-identical.
+    copyright: str = Field(default="2026 Abdul-Muizz Anwar", min_length=1)
+
+    @field_validator("name")
+    @classmethod
+    def _name_is_an_identifier(cls, value: str) -> str:
+        if not _SERVICE_NAME.fullmatch(value):
+            raise ValueError(
+                f"service name must start with a letter and contain only letters, digits"
+                f" and underscores (it becomes the package and the service id): {value!r}"
+            )
+        return value
 
 
 class ServiceSchema(BaseModel):

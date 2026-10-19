@@ -7,47 +7,67 @@ call these functions; they never reach the database directly.
 
 from __future__ import annotations
 
+from typing import Any
 {% if model.pk.py_type == "UUID" %}from uuid import UUID
-
-{% endif %}from typing import Any
-
+{% endif %}
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from {{ service.snake }}.models.{{ model.snake }} import {{ model.name }}
 from {{ service.snake }}.repositories import {{ model.snake }} as repo
 
 
-async def create(session: AsyncSession, data: dict[str, Any]) -> {{ model.name }}:
+async def create(
+    session: AsyncSession,
+    data: dict[str, Any],
+) -> {{ model.name }}:
     """Create a {{ model.name }}."""
     return await repo.create(session, data)
 
 
-async def get(session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}) -> {{ model.name }} | None:
+async def get(
+    session: AsyncSession,
+    {{ model.pk.name }}: {{ model.pk.py_type }},
+) -> {{ model.name }} | None:
     """Fetch a {{ model.name }} by primary key."""
     return await repo.get(session, {{ model.pk.name }})
+{%- if model.offset_list %}
 
 
 async def list_all(
-    session: AsyncSession, *, limit: int = 50, offset: int = 0
+    session: AsyncSession,
+    *,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[{{ model.name }}]:
     """List {{ model.plural_snake }} with offset pagination."""
     return await repo.list_all(session, limit=limit, offset=offset)
+{%- endif %}
+{%- if model.cursor_list %}
 
 
 async def list_after(
-    session: AsyncSession, *, cursor: {{ model.pk.py_type }} | None = None, limit: int = 50
+    session: AsyncSession,
+    *,
+    cursor: {{ model.pk.py_type }} | None = None,
+    limit: int = 50,
 ) -> list[{{ model.name }}]:
-    """List {{ model.plural_snake }} with keyset (cursor) pagination."""
+    """List {{ model.plural_snake }} with keyset pagination."""
     return await repo.list_after(session, cursor=cursor, limit=limit)
+{%- endif %}
 
 
 async def update(
-    session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}, data: dict[str, Any]
+    session: AsyncSession,
+    {{ model.pk.name }}: {{ model.pk.py_type }},
+    data: dict[str, Any],
 ) -> {{ model.name }} | None:
     """Apply a partial update to a {{ model.name }}."""
     return await repo.update(session, {{ model.pk.name }}, data)
 
 
-async def delete(session: AsyncSession, {{ model.pk.name }}: {{ model.pk.py_type }}) -> bool:
+async def delete(
+    session: AsyncSession,
+    {{ model.pk.name }}: {{ model.pk.py_type }},
+) -> bool:
     """Delete a {{ model.name }}."""
     return await repo.delete(session, {{ model.pk.name }})

@@ -10,20 +10,22 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - run: uv python install {{ service.python }}
       # No --frozen: the generator does not emit a uv.lock. Run `uv lock`,
       # commit the lockfile, and add --frozen for fully reproducible CI.
       - run: uv sync --all-extras
-      - run: uv run python -c "import {{ service.snake }}"
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
 
   test:
     needs: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - run: uv python install {{ service.python }}
       # No --frozen: the generator does not emit a uv.lock. Run `uv lock`,
       # commit the lockfile, and add --frozen for fully reproducible CI.
@@ -34,8 +36,8 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - run: uv python install {{ service.python }}
       # No --frozen: the generator does not emit a uv.lock. Run `uv lock`,
       # commit the lockfile, and add --frozen for fully reproducible CI.

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 {% for line in model.schema_imports %}{{ line }}
-{% endfor %}from pydantic import BaseModel, ConfigDict
+{% endfor %}{% if model.schema_imports %}
+{% endif %}from pydantic import BaseModel, ConfigDict
 
 
 class {{ model.name }}Create(BaseModel):

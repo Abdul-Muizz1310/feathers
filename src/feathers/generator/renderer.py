@@ -44,6 +44,7 @@ _MANIFEST: tuple[TemplateTarget, ...] = (
     TemplateTarget(".env.example.j2", ".env.example"),
     TemplateTarget(".gitignore.j2", ".gitignore"),
     TemplateTarget(".python-version.j2", ".python-version"),
+    TemplateTarget("LICENSE.j2", "LICENSE"),
     TemplateTarget("ci.yml.j2", ".github/workflows/ci.yml"),
     # Package source
     TemplateTarget("src/__init__.py.j2", "src/{{service_snake}}/__init__.py"),
@@ -56,6 +57,7 @@ _MANIFEST: tuple[TemplateTarget, ...] = (
         "src/core/platform_token.py.j2",
         "src/{{service_snake}}/core/platform_token.py",
     ),
+    TemplateTarget("src/core/rate_limit.py.j2", "src/{{service_snake}}/core/rate_limit.py"),
     TemplateTarget("src/api/__init__.py.j2", "src/{{service_snake}}/api/__init__.py"),
     TemplateTarget(
         "src/api/routers/__init__.py.j2",
@@ -106,8 +108,11 @@ _MANIFEST: tuple[TemplateTarget, ...] = (
     TemplateTarget("alembic/versions/0001_initial.py.j2", "alembic/versions/0001_initial.py"),
     # Tests
     TemplateTarget("tests/__init__.py.j2", "tests/__init__.py"),
+    TemplateTarget("tests/conftest.py.j2", "tests/conftest.py"),
+    TemplateTarget("tests/tokens.py.j2", "tests/tokens.py"),
     TemplateTarget("tests/test_health.py.j2", "tests/test_health.py"),
     TemplateTarget("tests/test_platform_token.py.j2", "tests/test_platform_token.py"),
+    TemplateTarget("tests/test_rate_limit.py.j2", "tests/test_rate_limit.py"),
     TemplateTarget(
         "tests/test_model.py.j2",
         "tests/test_{{model_plural_snake}}.py",

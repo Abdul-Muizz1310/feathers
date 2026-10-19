@@ -1,41 +1,179 @@
-"""CRUD test for {{ model.name }} (runs against a local SQLite database)."""
+{%- set c = model.crud -%}
+{%- set missing_id = "uuid.uuid4()" if model.pk.py_type == "UUID" else ("987654321" if model.pk.py_type == "int" else '"missing"') -%}
+{%- set ns = namespace(guarded=[], public=[], guarded_id=false, public_id=false) -%}
+{%- for ep in endpoints if ep.handler.startswith(model.plural_snake + ".") -%}
+{%- if ep.auth in ("editor", "admin") and ep.action in ("create", "get", "list", "update", "delete") -%}
+{%- set ns.guarded = ns.guarded + [ep] -%}
+{%- set ns.guarded_id = ns.guarded_id or "{" in ep.url_template -%}
+{%- endif -%}
+{%- if ep.auth == "none" -%}
+{%- set ns.public = ns.public + [ep] -%}
+{%- set ns.public_id = ns.public_id or "{" in ep.url_template -%}
+{%- endif -%}
+{%- endfor -%}
+{%- set uses_missing_id = "get" in c or ns.guarded_id or ns.public_id -%}
+{%- set needs_uuid = model.seeded_sample or (model.pk.py_type == "UUID" and uses_missing_id) -%}
+{%- set uses_client = "get" in c or ("create" in c and "delete" in c) or ns.guarded or ns.public -%}
+{%- set uses_auth = "get" in c or ("create" in c and "delete" in c) or ns.guarded -%}
+{%- macro url(ep) -%}
+{% if "{" in ep.url_template %}f{% endif %}"{{ ep.url_template }}"
+{%- endmacro -%}
+{%- macro call(var, ep, body="") -%}
+{{ var }} = client.request(
+            "{{ ep.method }}",
+            {{ url(ep) }},
+{%- if body %}
+            json={{ body }},
+{%- endif %}
+            headers=auth(),
+        )
+{%- endmacro -%}
+"""CRUD tests for {{ model.name }} (SQLite, driven with contract-v2 tokens)."""
 
-from fastapi.testclient import TestClient
+from __future__ import annotations
 
-from {{ service.snake }}.main import app
+{% if needs_uuid %}import uuid
 
-{% set ns = namespace(actions=[]) %}
-{%- for ep in endpoints if ep.handler.startswith(model.plural_snake + ".") %}
-{%- set ns.actions = ns.actions + [ep.action] %}
+{% endif %}{% if ns.public %}import pytest
+{% endif %}{% if uses_client %}from fastapi.testclient import TestClient
+
+{% endif %}{% if ns.public %}from {{ service.snake }}.core.config import settings
+{% endif %}from {{ service.snake }}.main import app
+{% if uses_auth %}from tests.tokens import auth
+{% endif %}{%- if "create" in c %}
+
+
+def _new_body() -> dict[str, object]:
+    """A valid create body; unique columns get a fresh value per call."""
+{%- if model.seeded_sample %}
+    seed = uuid.uuid4().hex[:8]
+{%- endif %}
+    return {
+{%- for f in model.create_fields %}
+        "{{ f.name }}": {{ f.sample_expr }},
 {%- endfor %}
-{% if "create" in ns.actions and "get" in ns.actions %}
+    }
+{%- endif %}
+{%- if "create" in c and "get" in c %}
+
 
 def test_{{ model.plural_snake }}_create_and_read() -> None:
     # ``with`` runs the lifespan, which creates the schema on SQLite.
     with TestClient(app) as client:
-        created = client.post(
-            "/{{ model.plural_snake }}",
-            json={
-{%- for f in model.create_fields %}
-                "{{ f.name }}": {{ f.sample }},
-{%- endfor %}
-            },
-        )
+        {{ call("created", c["create"], "_new_body()") }}
         assert created.status_code == 201, created.text
         item_id = created.json()["{{ model.pk.name }}"]
 
-        fetched = client.get(f"/{{ model.plural_snake }}/{item_id}")
+        {{ call("fetched", c["get"]) }}
         assert fetched.status_code == 200
         assert fetched.json()["{{ model.pk.name }}"] == item_id
-{%- if "list" in ns.actions %}
+{%- if "list" in c %}
 
-        listed = client.get("/{{ model.plural_snake }}")
+        {{ call("listed", c["list"]) }}
         assert listed.status_code == 200
         assert any(row["{{ model.pk.name }}"] == item_id for row in listed.json())
 {%- endif %}
-{% else %}
+
+        item_id = {{ missing_id }}
+        {{ call("missing", c["get"]) }}
+        assert missing.status_code == 404
+{%- endif %}
+{%- if "get" in c and "create" not in c %}
+
+
+def test_{{ model.plural_snake }}_missing_row_is_404() -> None:
+    with TestClient(app) as client:
+        item_id = {{ missing_id }}
+        {{ call("missing", c["get"]) }}
+        assert missing.status_code == 404
+{%- endif %}
+{%- if "create" in c and "delete" in c %}
+
+
+def test_{{ model.plural_snake }}_{% if model.soft_delete %}soft_deleted{% else %}deleted{% endif %}_row_is_gone() -> None:
+{%- if model.soft_delete %}
+    """After a 204 the row answers 404 to every primary-key path.
+
+    ``soft_delete: true`` keeps the row in the database (``deleted_at`` is set), so this
+    is what proves every path filters it, not only the list.
+    """
+{%- else %}
+    """After a 204 the row answers 404 to every primary-key path."""
+{%- endif %}
+    with TestClient(app) as client:
+        {{ call("created", c["create"], "_new_body()") }}
+        assert created.status_code == 201, created.text
+        item_id = created.json()["{{ model.pk.name }}"]
+
+        {{ call("deleted", c["delete"]) }}
+        assert deleted.status_code == 204, deleted.text
+{%- if "get" in c %}
+
+        {{ call("gone", c["get"]) }}
+        assert gone.status_code == 404, gone.text
+{%- endif %}
+{%- if "update" in c %}
+
+        {{ call("edited", c["update"], "{}") }}
+        assert edited.status_code == 404, edited.text
+{%- endif %}
+
+        {{ call("again", c["delete"]) }}
+        assert again.status_code == 404, again.text
+{%- if "list" in c %}
+
+        {{ call("listed", c["list"]) }}
+        assert all(row["{{ model.pk.name }}"] != item_id for row in listed.json())
+{%- endif %}
+{%- endif %}
+{%- if ns.guarded %}
+
+
+def test_{{ model.plural_snake }}_enforce_declared_roles() -> None:
+    """A viewer is authenticated but below every editor/admin route's role (403)."""
+{%- if ns.guarded_id %}
+    item_id = {{ missing_id }}
+{%- endif %}
+    routes = [
+{%- for ep in ns.guarded %}
+        ("{{ ep.method }}", {{ url(ep) }}),
+{%- endfor %}
+    ]
+    with TestClient(app) as client:
+        for method, path in routes:
+            response = client.request(
+                method,
+                path,
+                json={{ "_new_body()" if "create" in c else "{}" }},
+                headers=auth("viewer"),
+            )
+            assert response.status_code == 403, (method, path, response.text)
+{%- endif %}
+{%- if ns.public %}
+
+
+def test_{{ model.plural_snake }}_public_routes_need_no_token_or_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``auth: none`` routes are public by design: no token, not even a trusted key."""
+    monkeypatch.setattr(settings, "bastion_signing_key_public", "")
+{%- if ns.public_id %}
+    item_id = {{ missing_id }}
+{%- endif %}
+    routes = [
+{%- for ep in ns.public %}
+        ("{{ ep.method }}", {{ url(ep) }}),
+{%- endfor %}
+    ]
+    with TestClient(app) as client:
+        for method, path in routes:
+            response = client.request(method, path)
+            assert response.status_code not in (401, 403, 503), (method, path, response.text)
+{%- endif %}
+{%- if not uses_client %}
+
 
 def test_{{ model.plural_snake }}_app_imports() -> None:
-    # No create+get endpoints declared for {{ model.name }}; just assert the app loads.
+    # No CRUD round trip is declared for {{ model.name }}; just assert the app loads.
     assert app is not None
-{% endif %}
+{%- endif %}

@@ -36,7 +36,9 @@ class FieldView(TypedDict):
     sa_column: str
     pydantic_type: str
     sample: str
+    sample_expr: str
     default_literal: str | None
+    column: str
 
 
 # SQLAlchemy 2.0 column type constructors keyed by the schema's SA type name.
@@ -66,12 +68,23 @@ _SA_IMPORT: dict[str, str] = {
 }
 
 
+#: The generated project's ruff line length (pyproject.toml.j2 `[tool.ruff]`).
+LINE_LENGTH = 100
+
+
 def python_literal(value: str | int | float | bool | None) -> str:
-    """Render a default value as a Python literal."""
+    """Render a default value as a Python literal, quoted the way `ruff format` wants.
+
+    Double quotes unless the value itself contains a double quote (and no single
+    quote), in which case ``repr``'s single-quoted form has fewer escapes.
+    """
     if isinstance(value, bool):
         return "True" if value else "False"
     if isinstance(value, str):
-        return repr(value)
+        literal = repr(value)
+        if literal.startswith("'") and '"' not in value:
+            literal = '"' + literal[1:-1] + '"'
+        return literal
     return str(value)
 
 
@@ -116,22 +129,69 @@ def sa_column(field: FieldView) -> str:
     return "mapped_column(" + ", ".join(parts) + ")"
 
 
+def column(field: FieldView) -> str:
+    """The whole ``name: Mapped[...] = mapped_column(...)`` statement, indented.
+
+    One line when it fits in :data:`LINE_LENGTH`; otherwise one argument per line
+    with a magic trailing comma, which `ruff format` leaves exactly as written.
+    """
+    head = f"    {field['name']}: Mapped[{field['annotation']}] = "
+    one_line = head + field["sa_column"]
+    if len(one_line) <= LINE_LENGTH:
+        return one_line
+    args = _split_top_level(field["sa_column"].removeprefix("mapped_column(")[:-1])
+    body = "".join(f"        {arg},\n" for arg in args)
+    return f"{head}mapped_column(\n{body}    )"
+
+
+def _split_top_level(args: str) -> list[str]:
+    """Split a call's argument source on commas that are not inside brackets."""
+    parts: list[str] = []
+    depth = 0
+    start = 0
+    for index, char in enumerate(args):
+        if char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth -= 1
+        elif char == "," and depth == 0:
+            parts.append(args[start:index].strip())
+            start = index + 1
+    parts.append(args[start:].strip())
+    return parts
+
+
 def pydantic_type(field: FieldView) -> str:
     """The Pydantic field type — a ``Literal`` for enums, else the Python type."""
     if field["values"]:
-        members = ", ".join(repr(v) for v in field["values"])
+        members = ", ".join(python_literal(v) for v in field["values"])
         return f"Literal[{members}]"
     return str(field["py_type"])
 
 
+def isort_names(names: set[str]) -> list[str]:
+    """Order imported names the way isort (and ruff's ``I`` rules) do.
+
+    Constants (all caps) first, then classes (capitalised), then everything else;
+    case-insensitively within each group.
+    """
+
+    def key(name: str) -> tuple[int, str, str]:
+        kind = 0 if name.isupper() and len(name) > 1 else 1 if name[:1].isupper() else 2
+        return kind, name.lower(), name
+
+    return sorted(names, key=key)
+
+
 def model_imports(model: ModelView) -> list[str]:
-    """Sorted, minimal import lines for a model module."""
+    """Minimal import lines for a model module: stdlib, a blank line, SQLAlchemy."""
     fields = model.py_fields
     py_types = {f["py_type"] for f in fields}
     needs_dt = "datetime" in py_types or model.audit or model.soft_delete
+    needs_func = model.audit or any(is_auto_timestamp(f) for f in fields)
 
     stdlib: list[str] = []
-    if "datetime" in py_types or needs_dt:
+    if needs_dt:
         stdlib.append("from datetime import datetime")
     if "UUID" in py_types:
         stdlib.append("from uuid import UUID, uuid4")
@@ -141,27 +201,28 @@ def model_imports(model: ModelView) -> list[str]:
     sa_names = {_SA_IMPORT[f["sa_type"]] for f in fields}
     if needs_dt:
         sa_names.add("DateTime")
-    sa_names.add("func")
-    sa_line = "from sqlalchemy import " + ", ".join(sorted(sa_names))
+    if needs_func:
+        sa_names.add("func")
+    sa_line = "from sqlalchemy import " + ", ".join(isort_names(sa_names))
 
-    return [*sorted(stdlib), sa_line]
+    return [*sorted(stdlib), "", sa_line] if stdlib else [sa_line]
 
 
 def schema_imports(model: ModelView) -> list[str]:
-    """Sorted, minimal import lines for a Pydantic schema module."""
+    """Minimal stdlib import lines for a Pydantic schema module (one per module)."""
     fields = model.py_fields
     py_types = {f["py_type"] for f in fields}
 
     lines: list[str] = []
-    if "datetime" in py_types:
+    if "datetime" in py_types or model.audit or model.soft_delete:
         lines.append("from datetime import datetime")
-    typing_names: list[str] = []
+    typing_names: set[str] = set()
     if any(f["values"] for f in fields):
-        typing_names.append("Literal")
-    if typing_names:
-        lines.append("from typing import " + ", ".join(typing_names))
+        typing_names.add("Literal")
     if "dict[str, Any]" in py_types:
-        lines.append("from typing import Any")
+        typing_names.add("Any")
+    if typing_names:
+        lines.append("from typing import " + ", ".join(isort_names(typing_names)))
     if "UUID" in py_types:
         lines.append("from uuid import UUID")
     return sorted(lines)
@@ -186,5 +247,20 @@ _SAMPLE_BY_TYPE: dict[str, str] = {
 def sample_literal(field: FieldView) -> str:
     """A representative Python literal for a field, for generated test bodies."""
     if field["values"]:
-        return repr(field["values"][0])
+        return python_literal(field["values"][0])
     return _SAMPLE_BY_TYPE[field["py_type"]]
+
+
+#: Sample expressions for unique columns, over a per-request ``seed`` (8 hex chars),
+#: so a generated test can create several rows in one database without collisions.
+_SEEDED_SAMPLE_BY_TYPE: dict[str, str] = {
+    "str": 'f"x{seed}"',
+    "int": "int(seed, 16)",
+}
+
+
+def sample_expr(field: FieldView) -> str:
+    """A sample *expression* for a generated create body (seeded when unique)."""
+    if field["unique"] and not field["values"] and field["py_type"] in _SEEDED_SAMPLE_BY_TYPE:
+        return _SEEDED_SAMPLE_BY_TYPE[field["py_type"]]
+    return sample_literal(field)
