@@ -1,12 +1,12 @@
 """Incremental codegen — adds endpoints and models to an existing service.
 
-Uses a marker-based splicing approach for v0.1.0: the generated router files
+Uses a marker-based splicing approach: the generated router files
 contain ``# feathers: begin endpoints`` / ``# feathers: end endpoints`` markers,
 and new endpoint functions are inserted between them. Hand-written code between
 ``# feathers: begin hand-written`` / ``# feathers: end hand-written`` markers is
 never touched.
 
-A full libcst-based rewrite is deferred to v0.2.
+A libcst-based patcher (import merging) is deferred to a later release.
 """
 
 from __future__ import annotations
@@ -85,6 +85,9 @@ def add_model(*, service_dir: Path, schema: ServiceSchema) -> list[ActionTuple]:
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 _FENCE_BEGIN = "# feathers: begin hand-written"
+_REQUIRE_ROLE_IMPORT = re.compile(
+    r"^from \S+\.core\.platform_token import .*\brequire_role\b", re.M
+)
 
 
 def _has_function(path: Path, func_name: str) -> bool:
@@ -102,11 +105,30 @@ def _append_endpoint_function(path: Path, plural_snake: str, ep: EndpointView) -
     func_name = ep.func_name
 
     path_suffix = http_path.replace(f"/{plural_snake}", "", 1) or "/"
+    if ep.auth == "none":
+        decorator = f'@router.{method.lower()}("{path_suffix}")\n'
+    else:
+        # Keep the declared role: an added `auth: admin` route must not degrade to
+        # "any valid token". Splicing cannot merge imports, so refuse rather than
+        # emit a router that fails with NameError at import time.
+        if _REQUIRE_ROLE_IMPORT.search(text) is None:
+            raise PatcherError(
+                f"{path.name} does not import require_role, which {func_name} (auth:"
+                f" {ep.auth}) needs; add `from <package>.core.platform_token import"
+                " require_role` and re-run"
+            )
+        decorator = (
+            f"@router.{method.lower()}(\n"
+            f'    "{path_suffix}",\n'
+            f'    dependencies=[Depends(require_role("{ep.auth}"))],\n'
+            ")\n"
+        )
     snippet = (
-        f'\n\n@router.{method.lower()}("{path_suffix}")\n'
-        f"async def {func_name}() -> dict[str, str]:\n"
-        f'    """{method} {http_path}"""\n'
-        f'    return {{"handler": "{handler}"}}\n'
+        "\n\n\n"
+        + decorator
+        + f"async def {func_name}() -> dict[str, str]:\n"
+        + f'    """{method} {http_path}"""\n'
+        + f'    return {{"handler": "{handler}"}}\n'
     )
 
     # Insert before any hand-written fence block if present; otherwise append.
