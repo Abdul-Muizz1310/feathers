@@ -40,6 +40,7 @@ from testcontainers.core.container import ExecConfig
 
 from feathers.generator import render_service
 from feathers.schema import load_schema
+from tests.tokens import BastionKey
 
 pytestmark = pytest.mark.integration
 
@@ -48,6 +49,8 @@ POSTGRES_IMAGE = "postgres:17-alpine"
 SYNC_TIMEOUT_S = 600
 BOOT_DEADLINE_S = 90.0
 HTTP_TIMEOUT_S = 10.0
+#: The demo schema's service name is ``hello_users`` → token audience ``hello-users``.
+DEMO_AUD = "hello-users"
 
 
 # ── environment gate ─────────────────────────────────────────────────────────
@@ -107,6 +110,12 @@ class PgService:
     base_url: str
     root: Path
     container: PostgresContainer
+    key: BastionKey
+
+    @property
+    def admin(self) -> dict[str, str]:
+        """Fresh contract-v2 headers for an admin caller (every generated route allows it)."""
+        return self.key.headers(aud=DEMO_AUD, role="admin")
 
     def psql(self, sql: str) -> str:
         """Run ``sql`` through ``psql`` *inside* the container and return stdout.
@@ -148,7 +157,10 @@ def _new_user_payload(role: str = "viewer") -> dict[str, str]:
 
 def _create_user(svc: PgService, role: str = "viewer") -> dict[str, Any]:
     response = httpx.post(
-        f"{svc.base_url}/users", json=_new_user_payload(role), timeout=HTTP_TIMEOUT_S
+        f"{svc.base_url}/users",
+        json=_new_user_payload(role),
+        headers=svc.admin,
+        timeout=HTTP_TIMEOUT_S,
     )
     assert response.status_code == 201, response.text
     body: dict[str, Any] = response.json()
@@ -156,7 +168,9 @@ def _create_user(svc: PgService, role: str = "viewer") -> dict[str, Any]:
 
 
 def _list_user_ids(svc: PgService, **params: object) -> list[str]:
-    response = httpx.get(f"{svc.base_url}/users", params=params, timeout=HTTP_TIMEOUT_S)
+    response = httpx.get(
+        f"{svc.base_url}/users", params=params, headers=svc.admin, timeout=HTTP_TIMEOUT_S
+    )
     assert response.status_code == 200, response.text
     return [str(row["id"]) for row in response.json()]
 
@@ -185,7 +199,14 @@ def pg_service(
 
     dsn = postgres.get_connection_url()
     assert dsn.startswith("postgresql+asyncpg://"), dsn
-    env = {**os.environ, "DATABASE_URL": dsn, "GIT_SHA": "integration-tier"}
+    key = BastionKey()
+    env = {
+        **os.environ,
+        "DATABASE_URL": dsn,
+        "GIT_SHA": "integration-tier",
+        "BASTION_SIGNING_KEY_PUBLIC": key.public_b64,
+    }
+    env.pop("DEMO_MODE", None)
 
     _run(["uv", "sync"], cwd=root, env=env)
     # Postgres schema is owned by Alembic; the SQLite-only lifespan path is skipped.
@@ -213,7 +234,7 @@ def pg_service(
         try:
             base_url = f"http://127.0.0.1:{port}"
             _await_health(proc, base_url, log_path)
-            yield PgService(base_url=base_url, root=root, container=postgres)
+            yield PgService(base_url=base_url, root=root, container=postgres, key=key)
         finally:
             proc.terminate()
             try:
@@ -257,7 +278,11 @@ def test_health_reports_postgres_ok(pg_service: PgService) -> None:
 
 def test_no_sqlite_file_was_created(pg_service: PgService) -> None:
     """Negative space: a silent SQLite fallback would make every other test a lie."""
-    strays = [str(p.relative_to(pg_service.root)) for p in pg_service.root.rglob("*.db")]
+    strays = [
+        str(p.relative_to(pg_service.root))
+        for p in pg_service.root.rglob("*.db")
+        if not any(part.startswith(".") for part in p.relative_to(pg_service.root).parts)
+    ]
     assert strays == [], f"generated service fell back to SQLite: {strays}"
 
 
@@ -303,7 +328,9 @@ def test_crud_roundtrip_against_postgres(pg_service: PgService) -> None:
     assert created["role"] == "editor"
     assert created["created_at"] is not None  # server_default, loaded via refresh
 
-    fetched = httpx.get(f"{pg_service.base_url}/users/{user_id}", timeout=HTTP_TIMEOUT_S)
+    fetched = httpx.get(
+        f"{pg_service.base_url}/users/{user_id}", headers=pg_service.admin, timeout=HTTP_TIMEOUT_S
+    )
     assert fetched.status_code == 200
     assert fetched.json()["email"] == created["email"]
 
@@ -312,12 +339,17 @@ def test_crud_roundtrip_against_postgres(pg_service: PgService) -> None:
     patched = httpx.patch(
         f"{pg_service.base_url}/users/{user_id}",
         json={"full_name": "Renamed"},
+        headers=pg_service.admin,
         timeout=HTTP_TIMEOUT_S,
     )
     assert patched.status_code == 200, patched.text
     assert patched.json()["full_name"] == "Renamed"
 
-    missing = httpx.get(f"{pg_service.base_url}/users/{uuid.uuid4()}", timeout=HTTP_TIMEOUT_S)
+    missing = httpx.get(
+        f"{pg_service.base_url}/users/{uuid.uuid4()}",
+        headers=pg_service.admin,
+        timeout=HTTP_TIMEOUT_S,
+    )
     assert missing.status_code == 404
 
 
@@ -328,15 +360,21 @@ def test_soft_delete_hides_row_everywhere_but_keeps_it_in_postgres(
     created = _create_user(pg_service)
     user_id = created["id"]
 
-    deleted = httpx.delete(f"{pg_service.base_url}/users/{user_id}", timeout=HTTP_TIMEOUT_S)
+    url = f"{pg_service.base_url}/users/{user_id}"
+    deleted = httpx.delete(url, headers=pg_service.admin, timeout=HTTP_TIMEOUT_S)
     assert deleted.status_code == 204, deleted.text
 
     assert user_id not in _list_user_ids(pg_service, limit=100)
     # A client that just received 204 must not still be able to read the row.
-    after = httpx.get(f"{pg_service.base_url}/users/{user_id}", timeout=HTTP_TIMEOUT_S)
+    after = httpx.get(url, headers=pg_service.admin, timeout=HTTP_TIMEOUT_S)
     assert after.status_code == 404, after.text
     # Deleting twice is not silently successful.
-    again = httpx.delete(f"{pg_service.base_url}/users/{user_id}", timeout=HTTP_TIMEOUT_S)
+    again = httpx.delete(url, headers=pg_service.admin, timeout=HTTP_TIMEOUT_S)
+    # Nor can it be edited back to life.
+    patched = httpx.patch(
+        url, json={"full_name": "Zombie"}, headers=pg_service.admin, timeout=HTTP_TIMEOUT_S
+    )
+    assert patched.status_code == 404, patched.text
     assert again.status_code == 404, again.text
 
     retained = pg_service.psql(f"select deleted_at is not null from users where id = '{user_id}'")

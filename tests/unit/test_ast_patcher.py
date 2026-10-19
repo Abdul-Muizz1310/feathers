@@ -146,3 +146,64 @@ def test_add_model_to_nonexistent_service_raises(tmp_path: Path) -> None:
     schema = load_schema(EXTRA_MODEL_YAML)
     with pytest.raises(PatcherError, match="not found"):
         add_model(service_dir=tmp_path / "nope", schema=schema)
+
+
+# ── 0.2.0: an added endpoint keeps its declared role and stays lint-clean ────
+
+
+def _ruff(*args: str, cwd: Path) -> int:
+    import subprocess
+    import sys
+
+    return subprocess.run(
+        [sys.executable, "-m", "ruff", *args, "--no-cache", "."],
+        cwd=cwd,
+        capture_output=True,
+        timeout=120,
+    ).returncode
+
+
+def test_added_endpoint_enforces_its_declared_role(users_yaml_path: Path, tmp_path: Path) -> None:
+    """`auth: admin` on an added route must not degrade to "any valid token"."""
+    service = _bootstrap_service(users_yaml_path, tmp_path)
+    add_endpoint(service_dir=service, schema=load_schema(EXTRA_ENDPOINT_YAML))
+    router = (service / "src" / "hello_users" / "api" / "routers" / "users.py").read_text()
+    added = router.split('"/{id}/audit"')[1]
+    assert 'dependencies=[Depends(require_role("admin"))]' in added.split("async def")[0]
+
+
+def test_added_public_endpoint_has_no_guard(users_yaml_path: Path, tmp_path: Path) -> None:
+    service = _bootstrap_service(users_yaml_path, tmp_path)
+    public = EXTRA_ENDPOINT_YAML.replace(
+        "handler: users.audit, auth: admin", "handler: users.audit, auth: none"
+    )
+    add_endpoint(service_dir=service, schema=load_schema(public))
+    router = (service / "src" / "hello_users" / "api" / "routers" / "users.py").read_text()
+    assert "require_role" not in router.split('"/{id}/audit"')[1].split("async def")[0]
+
+
+def test_added_endpoint_keeps_the_router_ruff_clean(users_yaml_path: Path, tmp_path: Path) -> None:
+    service = _bootstrap_service(users_yaml_path, tmp_path)
+    add_endpoint(service_dir=service, schema=load_schema(EXTRA_ENDPOINT_YAML))
+    assert _ruff("check", cwd=service) == 0
+    assert _ruff("format", "--check", cwd=service) == 0
+
+
+def test_guarded_endpoint_into_a_router_without_require_role_is_refused(tmp_path: Path) -> None:
+    """Marker splicing does not merge imports, so it must not emit a NameError."""
+    public_only = """\
+service:
+  name: pub_svc
+models:
+  - name: Item
+    fields:
+      - { name: id, type: uuid, primary: true }
+endpoints:
+  - { method: GET, path: "/items/{id}", handler: items.get, auth: none }
+"""
+    render_service(load_schema(public_only), out_dir=tmp_path)
+    guarded = (
+        public_only + '  - { method: POST, path: "/items/{id}/x", handler: items.x, auth: admin }\n'
+    )
+    with pytest.raises(PatcherError, match="require_role"):
+        add_endpoint(service_dir=tmp_path / "pub_svc", schema=load_schema(guarded))

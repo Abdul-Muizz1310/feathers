@@ -46,10 +46,69 @@ def test_platform_token_defines_role_dependency(service_root: Path) -> None:
     assert "def require_role(" in pt
     # A genuine role comparison (not just a signature check) with a 403 path.
     assert "_ROLE_RANK" in pt
-    assert "status_code=403" in pt
-    # It must actually decode the token's claims, not only verify the signature.
-    assert "jwt.decode(" in pt
-    assert 'claims.get("role"' in pt
+    assert '"insufficient_role"' in pt
+    # frontend ranks as viewer (contract v2 §2 Roles).
+    assert '"frontend": 1' in pt
+    # Claims are parsed with a strict schema, not read out of an untyped dict.
+    assert "class _BastionClaims(BaseModel)" in pt
+    assert "strict=True" in pt
+
+
+# ── contract v2 (docs/specs/06-platform-contract-v2.md) ─────────────────────
+
+
+def test_service_id_constant_is_derived_from_the_schema_name(service_root: Path) -> None:
+    pt = _read(service_root, "src/hello_users/core/platform_token.py")
+    assert 'SERVICE_ID: Final = "hello-users"' in pt
+    assert 'BASTION_ISSUER: Final = "bastion"' in pt
+    assert "LEEWAY_S: Final = 10" in pt
+    assert "MAX_LIFETIME_S: Final = 300" in pt
+
+
+def test_demo_mode_defaults_off(service_root: Path) -> None:
+    config = _read(service_root, "src/hello_users/core/config.py")
+    assert "demo_mode: bool = False" in config
+    env = _read(service_root, ".env.example")
+    assert "DEMO_MODE=false" in env
+
+
+def test_no_trusted_key_fails_closed_with_503(service_root: Path) -> None:
+    pt = _read(service_root, "src/hello_users/core/platform_token.py")
+    assert '"platform_auth_unconfigured"' in pt
+    assert "status_code=503" in pt
+    # The 0.1 fail-open path is gone.
+    assert "fail open" not in pt.lower()
+
+
+def test_auth_none_endpoints_are_the_only_public_schema_routes(tmp_path: Path) -> None:
+    schema = load_schema(
+        """
+service:
+  name: pub_svc
+models:
+  - name: Item
+    fields:
+      - { name: id, type: uuid, primary: true }
+endpoints:
+  - { method: GET, path: "/items/{id}", handler: items.get, auth: none }
+  - { method: DELETE, path: "/items/{id}", handler: items.delete, auth: admin }
+"""
+    )
+    render_service(schema, out_dir=tmp_path)
+    pt = (tmp_path / "pub_svc" / "src" / "pub_svc" / "core" / "platform_token.py").read_text()
+    assert '("GET", re.compile(r"^/items/[^/]+$"))' in pt
+    assert '"DELETE"' not in pt
+
+
+def test_render_blueprint_asks_for_the_bastion_key(service_root: Path) -> None:
+    render_yaml = _read(service_root, "render.yaml")
+    assert "key: BASTION_SIGNING_KEY_PUBLIC" in render_yaml
+
+
+def test_dockerfile_trusts_render_proxy_headers(service_root: Path) -> None:
+    dockerfile = _read(service_root, "Dockerfile")
+    assert '"--proxy-headers"' in dockerfile
+    assert '"--forwarded-allow-ips", "*"' in dockerfile
 
 
 def test_endpoint_without_auth_has_no_guard() -> None:
@@ -116,11 +175,12 @@ endpoints:
     assert "service.list_all(" in offset_router
 
 
-def test_repository_emits_cursor_and_offset_methods(service_root: Path) -> None:
+def test_repository_emits_the_keyset_query(service_root: Path) -> None:
     repo = _read(service_root, "src/hello_users/repositories/user.py")
-    assert "async def list_all(" in repo
     assert "async def list_after(" in repo
     assert "User.id > cursor" in repo  # genuine keyset predicate
+    # The demo declares only a cursor list, so no offset query is emitted (spec 07).
+    assert "async def list_all(" not in repo
 
 
 # ── soft delete must be indistinguishable from absence ───────────────────────
@@ -167,7 +227,8 @@ endpoints:
 
 def test_list_limit_is_bounded(service_root: Path) -> None:
     router = _read(service_root, "src/hello_users/api/routers/users.py")
-    assert "Query(50, ge=1, le=100)" in router
+    # Annotated FastAPI parameters (ruff B008-clean): default 50, bounded 1..100.
+    assert "limit: Annotated[int, Query(ge=1, le=100)] = 50" in router
     repo = _read(service_root, "src/hello_users/repositories/user.py")
     assert "MAX_LIMIT" in repo
     assert "_clamp_limit(" in repo
@@ -181,6 +242,9 @@ def test_cors_middleware_wired(service_root: Path) -> None:
     assert "from fastapi.middleware.cors import CORSMiddleware" in platform
     assert "app.add_middleware(" in platform
     assert "settings.cors_origins" in platform
+    # Contract v2: the token header is an allowed request header; no cookies.
+    assert '"x-platform-token"' in platform
+    assert "allow_credentials=False" in platform
 
 
 # ── REL-2: serverless-safe pooling ───────────────────────────────────────────

@@ -55,7 +55,11 @@ def test_python_literal_bool() -> None:
 
 
 def test_python_literal_str_and_number() -> None:
-    assert codegen.python_literal("viewer") == "'viewer'"
+    # Double quotes: generated code must already be `ruff format`-clean.
+    assert codegen.python_literal("viewer") == '"viewer"'
+    assert codegen.python_literal('say "hi"') == "'say \"hi\"'"
+    assert codegen.python_literal("it's") == '"it\'s"'
+    assert codegen.python_literal("a\nb") == '"a\\nb"'
     assert codegen.python_literal(0) == "0"
     assert codegen.python_literal(1.5) == "1.5"
 
@@ -89,7 +93,7 @@ def test_sa_column_bool_default() -> None:
 
 def test_sa_column_enum_is_string() -> None:
     col = _field(_models()["Asset"], "kind")["sa_column"]
-    assert col == "mapped_column(String(), default='photo')"
+    assert col == 'mapped_column(String(), default="photo")'
 
 
 def test_sa_column_auto_timestamp() -> None:
@@ -142,7 +146,7 @@ def test_annotation_plain() -> None:
 
 
 def test_pydantic_type_enum_is_literal() -> None:
-    assert _field(_models()["Asset"], "kind")["pydantic_type"] == "Literal['photo', 'video']"
+    assert _field(_models()["Asset"], "kind")["pydantic_type"] == 'Literal["photo", "video"]'
 
 
 def test_pydantic_type_plain() -> None:
@@ -165,8 +169,8 @@ def test_model_imports_cover_all_types() -> None:
 def test_schema_imports_cover_all_types() -> None:
     lines = codegen.schema_imports(_models()["Asset"])
     assert "from datetime import datetime" in lines
-    assert "from typing import Literal" in lines
-    assert "from typing import Any" in lines
+    # One line per module, members in isort order (ruff I001-clean).
+    assert "from typing import Any, Literal" in lines
     assert "from uuid import UUID" in lines
 
 
@@ -208,4 +212,94 @@ def test_sample_literal_by_type() -> None:
     assert _field(asset, "created_at")["sample"] == '"2026-01-01T00:00:00Z"'
     assert _field(asset, "id")["sample"] == '"00000000-0000-0000-0000-000000000001"'
     # Enum sample uses the first declared value.
-    assert _field(asset, "kind")["sample"] == "'photo'"
+    assert _field(asset, "kind")["sample"] == '"photo"'
+
+
+# ── column statement layout (ruff-format stable) ─────────────────────────────
+
+
+def test_column_fits_on_one_line() -> None:
+    line = _field(_models()["Asset"], "views")["column"]
+    assert line == "    views: Mapped[int] = mapped_column(Integer(), default=0)"
+
+
+def test_column_too_long_for_one_line_is_exploded_with_a_trailing_comma() -> None:
+    """Past 100 columns, one argument per line plus a magic trailing comma — the
+    layout `ruff format` keeps as-is, whatever the names' lengths."""
+    long_yaml = ALL_TYPES_YAML.replace(
+        "{ name: created_at, type: datetime, default: now }",
+        "{ name: a_really_quite_long_creation_timestamp_name, type: datetime, default: now }",
+    )
+    asset = {m.name: m for m in build_context(load_schema(long_yaml))["models"]}["Asset"]
+    column = _field(asset, "a_really_quite_long_creation_timestamp_name")["column"]
+    assert column == (
+        "    a_really_quite_long_creation_timestamp_name: Mapped[datetime] = mapped_column(\n"
+        "        DateTime(timezone=True),\n"
+        "        server_default=func.now(),\n"
+        "    )"
+    )
+    assert all(len(line) <= 100 for line in column.splitlines())
+
+
+# ── seeded samples for generated tests (unique columns) ──────────────────────
+
+
+def test_sample_expr_seeds_unique_text_and_int_columns() -> None:
+    asset = _models()["Asset"]
+    # `title` is unique: every generated create gets a fresh value.
+    assert _field(asset, "title")["sample_expr"] == 'f"x{seed}"'
+    assert _field(asset, "views")["sample_expr"] == "1"
+    assert asset.seeded_sample is True
+
+
+def test_sample_expr_seeds_a_unique_int() -> None:
+    yaml_text = INT_PK_YAML.replace(
+        "{ name: label, type: str }", "{ name: n, type: int, unique: true }"
+    )
+    counter = {m.name: m for m in build_context(load_schema(yaml_text))["models"]}["Counter"]
+    assert _field(counter, "n")["sample_expr"] == "int(seed, 16)"
+
+
+def test_model_without_unique_columns_needs_no_seed() -> None:
+    assert _counter().seeded_sample is False
+
+
+# ── import sets match what the generated module really uses ──────────────────
+
+SOFT_ONLY_YAML = """\
+service:
+  name: soft
+models:
+  - name: Gadget
+    soft_delete: true
+    fields:
+      - { name: id, type: uuid, primary: true }
+      - { name: label, type: str }
+endpoints: []
+"""
+
+
+def _gadget():
+    return build_context(load_schema(SOFT_ONLY_YAML))["models"][0]
+
+
+def test_schema_imports_datetime_for_the_soft_delete_column() -> None:
+    """`deleted_at: datetime | None` is in the Response even with no datetime field."""
+    assert "from datetime import datetime" in codegen.schema_imports(_gadget())
+
+
+def test_model_imports_func_only_when_a_server_default_needs_it() -> None:
+    sa_line = next(
+        line for line in codegen.model_imports(_gadget()) if line.startswith("from sqlalchemy")
+    )
+    assert "func" not in sa_line
+
+
+def test_model_imports_order_names_like_isort() -> None:
+    """Constants (JSON) before classes before functions; stdlib then a blank line."""
+    lines = codegen.model_imports(_models()["Asset"])
+    sa_line = next(line for line in lines if line.startswith("from sqlalchemy import"))
+    assert sa_line == (
+        "from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text, Uuid, func"
+    )
+    assert lines[lines.index(sa_line) - 1] == ""

@@ -195,3 +195,67 @@ def test_file_read_os_error_raises(tmp_path: Path) -> None:
     p.mkdir()
     with pytest.raises(SchemaError):
         load_schema(p)
+
+
+# ── 0.2.0: names and paths become identifiers in generated code ─────────────
+
+_ONE_MODEL = """\
+service:
+  name: {name}
+models:
+  - name: Thing
+    fields:
+      - {{ name: id, type: uuid, primary: true }}
+endpoints:
+  - {{ method: GET, path: "{path}", handler: things.get }}
+"""
+
+
+@pytest.mark.parametrize("name", ["hello_users", "HelloUsers", "svc2", "a"])
+def test_service_name_accepts_package_names(name: str) -> None:
+    schema = load_schema(_ONE_MODEL.format(name=name, path="/things/{id}"))
+    assert schema.service.name == name
+
+
+@pytest.mark.parametrize("name", ["hello-users", "1users", "hello users", "_x", "svc.x", ""])
+def test_service_name_rejects_what_cannot_be_a_package_and_service_id(name: str) -> None:
+    """The name becomes the Python package and the token audience (`aud`)."""
+    with pytest.raises(SchemaError):
+        load_schema(_ONE_MODEL.format(name=f'"{name}"', path="/things/{id}"))
+
+
+@pytest.mark.parametrize(
+    "path", ["/", "/things", "/things/{id}", "/things/{id}/publish", "/v1.0/things-x/~me"]
+)
+def test_endpoint_path_accepts_plain_segments_and_params(path: str) -> None:
+    schema = load_schema(_ONE_MODEL.format(name="svc", path=path))
+    assert schema.endpoints[0].path == path
+
+
+@pytest.mark.parametrize(
+    "path",
+    ['/things/"x"', "/things//x", "/things/{}", "/things/{1d}", "/things/{id", "/a b", "/x/"],
+)
+def test_endpoint_path_rejects_what_cannot_be_embedded_safely(path: str) -> None:
+    """Paths are embedded in string literals and route regexes of generated code."""
+    with pytest.raises(SchemaError):
+        load_schema(_ONE_MODEL.format(name="svc", path=path.replace('"', '\\"')))
+
+
+def test_copyright_defaults_to_the_owner(minimal_yaml_text: str) -> None:
+    assert load_schema(minimal_yaml_text).service.copyright == "2026 Abdul-Muizz Anwar"
+
+
+def test_copyright_is_overridable(minimal_yaml_text: str) -> None:
+    src = minimal_yaml_text.replace(
+        "description: Minimal test service", 'description: x\n  copyright: "2027 Jane Doe"'
+    )
+    assert load_schema(src).service.copyright == "2027 Jane Doe"
+
+
+def test_empty_copyright_is_rejected(minimal_yaml_text: str) -> None:
+    src = minimal_yaml_text.replace(
+        "description: Minimal test service", 'description: x\n  copyright: ""'
+    )
+    with pytest.raises(SchemaError):
+        load_schema(src)
