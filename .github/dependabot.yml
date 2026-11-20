@@ -16,6 +16,10 @@ updates:
   # Python dependencies resolved from pyproject.toml / uv.lock
   - package-ecosystem: "uv"
     directory: "/"
+    # feathers-cli is a published library: its pyproject floors bound what
+    # downstream installs may resolve, so bumps move uv.lock only and never
+    # raise a floor. Raise one by hand when a security fix requires it.
+    versioning-strategy: "lockfile-only"
     schedule:
       interval: "weekly"
       day: "monday"
